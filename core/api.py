@@ -132,6 +132,56 @@ def get_division_matches(short_id: str, season_number: int, division_number: int
     return r.json().get("divisionMatches", [])
 
 
+def get_division_calendar(short_id: str, season_number: int, division_number: int, token: str = None) -> dict:
+    """Calendrier COMPLET d'une division pour une saison. Renvoie
+    {"fixtures": [{"gameWeek", "realGameWeek", "matchesIds",
+    "previousTargetMan", "afterTargetMan"}, ...]} -- UNE entree par journee
+    de TOUTE la saison en un seul appel. Sert ici uniquement a determiner la
+    longueur REELLE de la phase en cours (fixtures[-1]["gameWeek"]) -- cf.
+    core/live_projection.py::true_last_gameweek, port de mpg_app (meme bug
+    B1 deja corrige a preserver : ne jamais deduire cette longueur d'une
+    config de ligue, qui represente la phase SUIVANTE, pas la courante)."""
+    division_id = f"mpg_division_{short_id}_{season_number}_{division_number}"
+    url = f"{MPG_API}/division/{division_id}/calendar"
+    r = requests.get(url, headers=build_headers(token), timeout=TIMEOUT)
+    r.raise_for_status()
+    return r.json()
+
+
+def get_division_teams(short_id: str, season_number: int, division_number: int, token: str = None) -> list[dict]:
+    """Equipes d'une division (nom, abreviation, budget restant, effectif...),
+    via /teams/division/{divisionId}. C'est le SEUL endroit ou MPG expose le
+    nom d'equipe -- /division/mpg_division_{...} et /league/{leagueId} ne
+    l'ont jamais."""
+    division_id = f"mpg_division_{short_id}_{season_number}_{division_number}"
+    r = requests.get(f"{MPG_API}/teams/division/{division_id}", headers=build_headers(token), timeout=TIMEOUT)
+    r.raise_for_status()
+    return r.json()
+
+
+def get_division_team_names(short_id: str, season_number: int, division_number: int, token: str = None) -> dict[str, str]:
+    """{userId: nom d'equipe} pour UNE division -- combine usersTeams
+    (get_division_info, userId->teamId) et /teams/division/{id} (nom,
+    get_division_teams). Version scopee a une seule division de
+    mpg_app::get_league_team_info (qui balaie toute la ligue) -- ici
+    scripts/live_job.py connait deja la division a chaque appel, pas besoin
+    de re-parcourir les autres. Sert de nom affiche en v1 (pas de registre
+    managers/RealName cote mpg_live, cf. core/live_projection.py)."""
+    info = get_division_info(short_id, season_number, division_number, token=token)
+    users_teams = info.get("usersTeams") or {}
+    team_id_to_user = {team_id: user_id for user_id, team_id in users_teams.items()}
+    try:
+        teams = get_division_teams(short_id, season_number, division_number, token=token)
+    except requests.exceptions.RequestException:
+        teams = []
+    result = {}
+    for team in teams:
+        user_id = team_id_to_user.get(team.get("id"))
+        if user_id:
+            result[user_id] = team.get("name", "")
+    return result
+
+
 def get_championship_match(match_id: str, token: str = None) -> dict:
     """Etat REEL d'un match de championnat (endpoint trouve en observant un match
     en direct, 2026-08-08) : period ("firstHalf"/...), matchTime ("23'"), score

@@ -48,15 +48,22 @@ def supabase_client() -> Client:
 
 def get_all_leagues(sb: Client) -> list[dict]:
     """Remplace core.league.get_all_leagues() (qui lit League_Codes.json en
-    local cote mpg_app) -- meme forme de dict en sortie (nom, code,
-    seasonSearch) que celle attendue par le reste du code."""
+    local cote mpg_app) -- meme forme de dict en sortie (memes cles
+    camelCase : nom/code/seasonSearch/scoring/...) que celle attendue par
+    core/league.py et core/live_projection.py, portes depuis mpg_app."""
     rows = sb.table("leagues").select("*").execute().data
     return [
         {
             "nom": r["nom"],
             "code": r["code"],
             "seasonSearch": r["season_search"],
+            "seasonStart": r["season_start"],
             "championshipId": r["championship_id"],
+            "playersNumber": r["players_number"],
+            "playersPerDivision": r["players_per_division"],
+            "poolGameweeks": r["pool_gameweeks"],
+            "Div_A_Gameweeks": r["div_a_gameweeks"],
+            "scoring": r.get("scoring") or {},
         }
         for r in rows
     ]

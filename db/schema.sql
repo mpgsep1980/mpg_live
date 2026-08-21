@@ -14,7 +14,11 @@ create table leagues (
     nom                   text not null,           -- nom interne (ex. Ligue_2_EKT)
     championship_id       integer,                 -- id championnat reel (calendrier football)
     season_search         integer,                 -- saison MPG (seasonSearch)
+    season_start          integer,                 -- 1ere saison MPG suivie par cette ligue (pour Boss_Saison)
+    players_number        integer,                 -- taille totale de la ligue (ex. 72), distinct de players_per_division
     players_per_division  integer default 8,
+    pool_gameweeks        integer,                 -- longueur de la phase de poules (repli si le calendrier MPG est indisponible)
+    div_a_gameweeks       integer,                 -- longueur de la phase A (meme repli)
     scoring               jsonb not null default '{}'::jsonb,  -- surcharges scoring/bonus (cf. core/league.py::get_scoring_config cote mpg_app)
     updated_at            timestamptz not null default now()
 );
