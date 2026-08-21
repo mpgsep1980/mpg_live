@@ -53,6 +53,25 @@ create table live_snapshots (
 -- ============================================================
 -- Classements archives (fin de journee/saison) -- remplace
 -- <Ligue>/Classement/<saison>/<Ligue>_Classement_General_saison_*.json
+--
+-- Ecrite par scripts/live_job.py (core/archive.py::archive_closed_gameweek_if_needed)
+-- une fois qu'une journee est terminee (window_end depasse), jamais par le
+-- site. `stats` est un sous-ensemble volontairement reduit de ce que
+-- mpg_app archive (pas de Precieux/Grotaldo -- hors perimetre v1, voir
+-- core/live_projection.py cote mpg_app pour le futur port complet) :
+--   {
+--     "teamName":      text,   -- nom d'equipe MPG (pas de registre managers en v1)
+--     "victory":       int,
+--     "draw":          int,
+--     "defeat":        int,
+--     "matches_joues":  int,
+--     "score+":        int,    -- buts pour cumules
+--     "score-":        int,    -- buts contre cumules
+--     "points_pond":   numeric, -- points ponderes cumules, pour rang_ligue
+--     "cleanSheet":    int,
+--     "manita":        int,
+--     "on_fire":       int
+--   }
 -- ============================================================
 create table league_classement_archive (
     league_code  text not null references leagues(code),
@@ -62,6 +81,43 @@ create table league_classement_archive (
     stats        jsonb not null,
     updated_at   timestamptz not null default now(),
     primary key (league_code, season, division, user_id)
+);
+
+-- ============================================================
+-- Classement de division pret a afficher (base archivee + delta live
+-- combines et deja passes par compute_internal_bonuses) -- alimente
+-- site/division.html. Une ligne par division, upsertee a chaque tick de
+-- cron ; PAS de colonne game_week dans la cle, le site lit toujours "la"
+-- ligne courante sans tri/limit. Ecrite uniquement par scripts/live_job.py
+-- (core/live_projection.py::resolve_division_rows +
+-- resolve_league_wide_ranks), jamais par le site.
+--
+-- `data` = tableau classe, un element par manager :
+--   {
+--     "userId":        text,
+--     "teamName":      text,
+--     "rang":          int,     -- rang de division (1-indexe)
+--     "points":        int,     -- points BRUTS de division (V*3+N*1), pas ponderes
+--     "matches_joues": int,
+--     "victoires":     int, "nuls": int, "defaites": int,
+--     "buts_pour":     int, "buts_contre": int, "diff": int,
+--     "cleanSheet":    int, "manita": int, "on_fire": int,
+--     "pichichi":      numeric, -- valeur courante du bonus (0 si non leader)
+--     "mur":           numeric,
+--     "boss":          boolean, -- true ssi bonus_details.Bonus_Champion > 0
+--     "rang_ligue":    int,     -- classement croise toutes divisions de la ligue
+--     "points_ligue":  numeric  -- formule simplifiee v1, voir resolve_league_wide_ranks
+--   }
+-- ============================================================
+create table division_classement_live (
+    league_code  text not null references leagues(code),
+    season       integer not null,
+    division     integer not null,
+    game_week    integer not null,
+    data         jsonb not null,
+    is_live      boolean not null default false,
+    updated_at   timestamptz not null default now(),
+    primary key (league_code, season, division)
 );
 
 -- ============================================================
@@ -138,5 +194,6 @@ $$;
 --   grant execute on function verify_manager_password to anon, authenticated;
 --   grant execute on function set_manager_password to anon, authenticated;
 --   (+ policies RLS pour les autres tables : lecture publique sur
---   live_snapshots/super_classement/league_classement_archive, ecriture
---   reservee au role service_role utilise par scripts/live_job.py)
+--   live_snapshots/super_classement/league_classement_archive/
+--   division_classement_live, ecriture reservee au role service_role
+--   utilise par scripts/live_job.py)
