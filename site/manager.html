@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>MPG Live -- exemple de lecture Supabase</title>
+<link rel="stylesheet" href="mpg-tokens.css">
+<style>
+  /* Jetons de la charte "Mon Propre Gazon" (mpg-tokens.css, retour
+     utilisateur 2026-08-20) -- police systeme deja conforme, le reste
+     (bordures 0.5px, rayon --mpg-radius, textes attenues) aligne ici. */
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; max-width: 700px; margin: 2rem auto; padding: 0 1rem; color: var(--mpg-title); }
+  .match { border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); padding: .75rem 1rem; margin: .5rem 0; }
+  .score { font-weight: bold; }
+  .meta { color: var(--mpg-text-soft); font-size: .85rem; }
+</style>
+</head>
+<body>
+
+<h1>Exemple -- lecture directe Supabase</h1>
+<p class="meta">
+  Ce fichier montre UNIQUEMENT le pattern de lecture (site statique -&gt; Supabase
+  via supabase-js, cle anonyme). Il affiche les instantanes bruts de
+  <code>live_snapshots</code> (resultat de <code>compute_division_live_scores</code>
+  cote Python) -- PAS encore le classement fusionne avec les bonus (Pichichi,
+  Le Mur, bonus generaux...), qui reste a batir separement (vue/fonction
+  Postgres, ou calcul cote script live_job.py a l'ecriture). A adapter une
+  fois le vrai projet Supabase cree.
+</p>
+
+<div>
+  <label>Code ligue (leagues.code) : <input id="leagueCode" value="QLRBXDCX2"></label>
+  <label>Division : <input id="division" type="number" value="1" style="width:4em"></label>
+  <button onclick="load()">Charger</button>
+</div>
+
+<div id="status" class="meta"></div>
+<div id="matches"></div>
+
+<script type="module">
+  import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+  // A remplacer par les vraies valeurs du projet Supabase (cle ANONYME
+  // uniquement -- jamais la cle service_role, qui reste un secret GitHub
+  // Actions cote scripts/live_job.py).
+  const SUPABASE_URL = "https://YOUR-PROJECT.supabase.co";
+  const SUPABASE_ANON_KEY = "YOUR-ANON-KEY";
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  window.load = async function load() {
+    const leagueCode = document.getElementById("leagueCode").value.trim();
+    const division = Number(document.getElementById("division").value);
+    const statusEl = document.getElementById("status");
+    const matchesEl = document.getElementById("matches");
+
+    statusEl.textContent = "Chargement...";
+    matchesEl.innerHTML = "";
+
+    const { data, error } = await supabase
+      .from("live_snapshots")
+      .select("*")
+      .eq("league_code", leagueCode)
+      .eq("division", division)
+      .order("updated_at", { ascending: false })
+      .limit(1);
+
+    if (error) {
+      statusEl.textContent = "Erreur : " + error.message;
+      return;
+    }
+    if (!data.length) {
+      statusEl.textContent = "Aucun instantane pour cette ligue/division (journee pas en cours, ou table vide).";
+      return;
+    }
+
+    const snapshot = data[0];
+    statusEl.textContent = `Journee ${snapshot.game_week} -- mis a jour ${new Date(snapshot.updated_at).toLocaleString("fr-FR")}`;
+
+    for (const match of snapshot.data) {
+      const div = document.createElement("div");
+      div.className = "match";
+      div.innerHTML = `
+        <div class="score">${match.home.userId} ${match.home.total.toFixed(1)} -- ${match.away.total.toFixed(1)} ${match.away.userId}</div>
+        <div class="meta">matchId ${match.matchId}</div>
+      `;
+      matchesEl.appendChild(div);
+    }
+  };
+</script>
+
+</body>
+</html>

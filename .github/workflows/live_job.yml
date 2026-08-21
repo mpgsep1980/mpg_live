@@ -1,0 +1,28 @@
+name: MPG live poll
+
+on:
+  schedule:
+    # Plancher pratique de GitHub Actions -- pas de garantie d'horaire exact
+    # (peut etre retarde sous forte charge GitHub), mais suffisant pour une
+    # fenetre de journee qui dure 4-5 jours reels.
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - run: python scripts/live_job.py
+        env:
+          MPG_TOKEN: ${{ secrets.MPG_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
