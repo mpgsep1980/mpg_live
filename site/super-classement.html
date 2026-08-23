@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MPG Live -- Super Classement</title>
+<link rel="stylesheet" href="mpg-tokens.css">
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; max-width: 700px; margin: 2rem auto; padding: 0 1rem; color: var(--mpg-title); }
+  h1 { font-size: 1.4rem; margin: 0 0 0.25rem; }
+  .meta { color: var(--mpg-text-soft); font-size: 0.85rem; }
+  .controls { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: end; margin: 1rem 0; }
+  .controls label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.75rem; color: var(--mpg-text-soft); }
+  .controls input {
+    border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); padding: 0.4rem 0.5rem;
+    font-size: 0.9rem; font-family: inherit; color: var(--mpg-title);
+  }
+  .controls button {
+    background: var(--mpg-action); color: #fff; border: none; border-radius: var(--mpg-radius);
+    padding: 0.5rem 1rem; font-size: 0.9rem; font-weight: 600; cursor: pointer;
+  }
+  .controls button:hover { background: var(--mpg-action-hover); }
+  .search-row { margin: 0.75rem 0; }
+  .search-row input {
+    width: 100%; border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius);
+    padding: 0.5rem 0.75rem; font-size: 0.9rem; font-family: inherit; color: var(--mpg-title);
+  }
+
+  .table-wrap { overflow-x: auto; }
+  .mpg-table th, .mpg-table td { padding: 0.5rem 0.6rem; border-bottom: 0.5px solid var(--mpg-border-soft); }
+  .mpg-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .mpg-table tbody tr.hidden { display: none; }
+
+  .status-msg { color: var(--mpg-text-soft); font-size: 0.9rem; margin: 1rem 0; }
+  .status-msg.err { color: var(--mpg-danger); }
+</style>
+</head>
+<body>
+
+<h1>Super Classement</h1>
+<div class="meta" id="subtitle">Chargement...</div>
+
+<div class="controls mpg-no-print">
+  <label>Saison<input id="season" type="number" value="2026" style="width:6em"></label>
+  <label>userId (ma ligne)<input id="userId" placeholder="user_..." style="width:10em"></label>
+  <button id="load-btn">Charger</button>
+</div>
+
+<div class="search-row mpg-no-print">
+  <input type="text" id="search" placeholder="Rechercher un manager...">
+</div>
+<p class="meta">Points = somme des classements de ligue (formule simplifiée v1). Aucun des 15 bonus généraux (Sulfateuse, Winner, Gollum, etc.) ni Multi Boss n'est encore appliqué ici -- à compléter dans un chantier séparé.</p>
+
+<div id="status" class="status-msg"></div>
+<div id="table-container"></div>
+
+<script type="module">
+  import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+  const SUPABASE_URL = "https://zvmngpoogwjiknqrkjky.supabase.co";
+  const SUPABASE_ANON_KEY = "sb_publishable_YhAD0_spZJF58Dt_TTQplQ_VrFSKRK8";
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const params = new URLSearchParams(location.search);
+
+  for (const [param, id] of [["season", "season"], ["user", "userId"]]) {
+    const v = params.get(param);
+    if (v) document.getElementById(id).value = v;
+  }
+
+  function fmt(n) {
+    if (n === null || n === undefined) return "–";
+    return Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\.0$/, "");
+  }
+
+  function rowHtml(row, isMe) {
+    const teamName = (row.bonus_details && row.bonus_details.teamName) || row.user_id;
+    return `
+      <tr data-name="${teamName.toLowerCase()}" class="${isMe ? "mpg-row-selected" : ""}">
+        <td class="rank">#${row.rang}</td>
+        <td>${teamName}</td>
+        <td class="num">${fmt(row.points)}</td>
+      </tr>`;
+  }
+
+  function applyFilter() {
+    const query = document.getElementById("search").value.trim().toLowerCase();
+    document.querySelectorAll("#table-container tbody tr").forEach(tr => {
+      tr.classList.toggle("hidden", query && !tr.dataset.name.includes(query));
+    });
+  }
+
+  async function load() {
+    const season = Number(document.getElementById("season").value);
+    const userId = document.getElementById("userId").value.trim();
+
+    const statusEl = document.getElementById("status");
+    const subtitleEl = document.getElementById("subtitle");
+    const tableEl = document.getElementById("table-container");
+
+    statusEl.textContent = "Chargement...";
+    statusEl.className = "status-msg";
+    tableEl.innerHTML = "";
+
+    const { data, error } = await supabase
+      .from("super_classement")
+      .select("*")
+      .eq("season", season)
+      .order("points", { ascending: false });
+
+    if (error) {
+      statusEl.textContent = "Erreur : " + error.message;
+      statusEl.className = "status-msg err";
+      subtitleEl.textContent = "";
+      return;
+    }
+    if (!data.length) {
+      statusEl.textContent = "Aucun Super Classement pour cette saison (pas encore calculé).";
+      subtitleEl.textContent = "";
+      return;
+    }
+
+    statusEl.textContent = "";
+    const latestUpdate = data.reduce((max, r) => (r.updated_at > max ? r.updated_at : max), data[0].updated_at);
+    subtitleEl.textContent = `${data.length} manager(s) · mis à jour ${new Date(latestUpdate).toLocaleString("fr-FR")}`;
+
+    data.forEach((row, i) => { row.rang = i + 1; });
+
+    tableEl.innerHTML = `
+      <div class="table-wrap">
+        <table class="mpg-table">
+          <thead><tr><th>Rang</th><th>Équipe</th><th>Pts</th></tr></thead>
+          <tbody>${data.map(r => rowHtml(r, userId && r.user_id === userId)).join("")}</tbody>
+        </table>
+      </div>`;
+    applyFilter();
+  }
+
+  document.getElementById("load-btn").addEventListener("click", load);
+  document.getElementById("search").addEventListener("input", applyFilter);
+  load();
+</script>
+
+</body>
+</html>
