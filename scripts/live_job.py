@@ -218,15 +218,16 @@ def main() -> None:
         ranked = compute_super_classement(sb)
         now_iso = datetime.now(timezone.utc).isoformat()
         for row in ranked:
+            # super_classement n'a pas de colonne teamName dediee (cf.
+            # db/schema.sql) -- range dans le meme champ jsonb que les
+            # VRAIS bonus (bonus_details), sous une cle "teamName" qui ne
+            # collisionne avec aucun nom de categorie (cf.
+            # core/general_bonus.py::DEFAULT_GENERAL_BONUS_CATEGORIES).
+            bonus_details = dict(row.get("bonus_details") or {})
+            bonus_details["teamName"] = row.get("teamName", "")
             sb.table("super_classement").upsert({
                 "season": season, "user_id": row["userId"], "points": row["points"],
-                # super_classement n'a pas de colonne teamName dediee (cf.
-                # db/schema.sql) -- range ici, dans le seul champ jsonb libre
-                # de la table, plutot que d'ajouter une colonne pour ca
-                # maintenant (aucun VRAI bonus n'y est encore stocke, cf.
-                # docstring compute_super_classement -- {} sinon).
-                "bonus_details": {"teamName": row.get("teamName", "")},
-                "updated_at": now_iso,
+                "bonus_details": bonus_details, "updated_at": now_iso,
             }).execute()
         print(f"  Super Classement : {len(ranked)} manager(s) ecrits pour la saison {season}.")
     except Exception as e:

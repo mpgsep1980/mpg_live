@@ -29,10 +29,15 @@ LIVE_COUNTER_KEYS = ("cleanSheet", "manita", "on_fire")
 # Champs publics ecrits dans division_classement_live.data (cf. db/schema.sql)
 # -- tout le reste (points_pond, _bonus_champion, _bonus_podium) est interne,
 # utilise seulement par resolve_league_wide_ranks, jamais publie tel quel.
+# grotaldo/owngoals : PAS affiches sur site/division.html (colonnes non
+# demandees pour cette page), mais necessaires ici pour alimenter les bonus
+# generaux du Super Classement (King Grotaldo/Harry Maguire Challenge, cf.
+# core/general_bonus.py::compute_super_classement) -- les donnees stockees
+# peuvent etre plus riches que ce qu'une page en particulier affiche.
 PUBLIC_ROW_FIELDS = (
     "userId", "teamName", "rang", "points", "matches_joues",
     "victoires", "nuls", "defaites", "buts_pour", "buts_contre", "diff",
-    "cleanSheet", "manita", "on_fire", "pichichi", "mur", "boss",
+    "cleanSheet", "manita", "on_fire", "grotaldo", "owngoals", "pichichi", "mur", "boss",
 )
 
 
@@ -123,8 +128,13 @@ def division_delta(division_matches: list[dict], division_number: int, game_week
 
 def combined_division_standings(base_by_user: dict, delta_rows: list[dict]) -> list[dict]:
     """Port de mpg_app::_combined_division_standings, reduit au schema
-    d'archive v1 (pas de Precieux/Grotaldo -- absents de
-    league_classement_archive.stats, cf. db/schema.sql)."""
+    d'archive v1 (pas de Precieux -- aucune source Supabase, cf.
+    db/schema.sql). grotaldo/owngoals AJOUTES (retour utilisateur
+    2026-08-23, "on y va etape par etape" -- deja calcules par
+    aggregate_standings, simplement pas encore reportes ici) pour
+    debloquer King Grotaldo/Harry Maguire Challenge dans les bonus
+    generaux (cf. core/general_bonus.py, core/live_projection.py::
+    compute_super_classement)."""
     combined = []
     for row in delta_rows:
         uid = row["userId"]
@@ -146,6 +156,8 @@ def combined_division_standings(base_by_user: dict, delta_rows: list[dict]) -> l
             "cleanSheet": base.get("cleanSheet", 0) + row.get("cleanSheet", 0),
             "manita": base.get("manita", 0) + row.get("manita", 0),
             "on_fire": base.get("on_fire", 0) + row.get("on_fire", 0),
+            "grotaldo": base.get("grotaldo", 0) + row.get("grotaldo", 0),
+            "owngoals": base.get("owngoals", 0) + row.get("owngoals", 0),
         })
     return combined
 
@@ -209,6 +221,7 @@ def resolve_division_rows(league: dict, division_number: int, division_matches: 
                 "victoires": base.get("victory", 0), "nuls": base.get("draw", 0), "defaites": base.get("defeat", 0),
                 "buts_pour": base.get("score+", 0), "buts_contre": base.get("score-", 0),
                 "cleanSheet": base.get("cleanSheet", 0), "manita": base.get("manita", 0), "on_fire": base.get("on_fire", 0),
+                "grotaldo": base.get("grotaldo", 0), "owngoals": base.get("owngoals", 0),
                 "pichichi": 0, "mur": 0, "boss": False,
                 "points_pond": base.get("points_pond", 0.0),
             })
@@ -230,6 +243,7 @@ def resolve_division_rows(league: dict, division_number: int, division_matches: 
                 "victoires": row["victory"], "nuls": row["draw"], "defaites": row["defeat"],
                 "buts_pour": row["buts_pour"], "buts_contre": row["buts_contre"],
                 "cleanSheet": row["cleanSheet"], "manita": row["manita"], "on_fire": row["on_fire"],
+                "grotaldo": row["grotaldo"], "owngoals": row["owngoals"],
                 "pichichi": bonus.get("Pichichi", 0), "mur": bonus.get("Le_Mur", 0),
                 "boss": bool(bonus.get("Bonus_Champion", 0) > 0),
                 "points_pond": row["points_pond"],
@@ -314,21 +328,26 @@ def finalize_division_data(division_rows: list[dict], league_ranks: dict[str, di
 def compute_super_classement(sb) -> list[dict]:
     """Classement croise TOUTES LIGUES CONFONDUES -- version volontairement
     reduite du Super Classement cote mpg_app (retour utilisateur 2026-08-23,
-    "je te laisse poursuivre... tu connais la finalite" -- avance par etapes
-    livrables plutot que de bloquer sur le port complet).
+    "on y va etape par etape" -- avance par etapes livrables plutot que de
+    bloquer sur le port complet).
 
     Somme "points_ligue" (deja calcule par resolve_league_wide_ranks, cf.
-    division_classement_live) pour chaque manager sur TOUTES les divisions
+    division_classement_live) POUR LA BASE, plus les champs bruts necessaires
+    aux bonus generaux (score+/score-/victory/draw/defeat/cleanSheet/manita/
+    on_fire/grotaldo/owngoals) pour chaque manager sur TOUTES les divisions
     de TOUTES les ligues ou il apparait -- couvre le cas d'un manager membre
-    de plusieurs des ligues suivies. AUCUN des 15 bonus generaux
-    (core/general_bonus.py cote mpg_app -- Sulfateuse/Winner/Gollum/etc.) ni
-    Multi Boss n'est applique ici : leurs champs sources (owngoals, Ycards/
-    Rcards, Precious_Count, les 8 compteurs *_DTC de La Piñata...) ne sont
-    tout simplement pas suivis par le schema Supabase actuel
-    (league_classement_archive.stats, cf. db/schema.sql) -- LIMITE CONNUE
-    v1, a completer dans un chantier separe une fois ces champs ajoutes.
-    Departage : points seuls (pas le tri a 6 criteres de mpg_app -- Ycards/
-    Rcards absents ici pour la meme raison).
+    de plusieurs des ligues suivies. apply_general_bonuses (core/general_bonus.py,
+    port verbatim de mpg_app) est ensuite applique sur ce total -- SEULES les
+    categories dont la cle source est fournie ci-dessus s'activent
+    reellement (Sulfateuse/Rideau de Fer/Winner/En feu/Pétard Mouillé/
+    Passoire/L'Araignée/High Five/FFL/Macroniste/King Grotaldo/Harry Maguire
+    Challenge -- 12 sur 16), les 4 autres (La Piñata/Gollum/Poulidor/La
+    Chèvre) restent a 0 pour tout le monde -- leurs champs sources ne sont
+    pas suivis par le schema Supabase actuel, LIMITE CONNUE v1, a completer
+    separement. Multi Boss n'est pas applique ici non plus (module a part
+    cote mpg_app, pas encore porte). Departage : points seuls (pas le tri a
+    6 criteres de mpg_app -- Ycards/Rcards absents ici, jamais suivis par ce
+    schema).
 
     PAS de filtre par "season" ici, volontairement -- deux ligues suivant la
     MEME saison calendaire reelle peuvent avoir des compteurs de saison MPG
@@ -347,24 +366,47 @@ def compute_super_classement(sb) -> list[dict]:
     `teamName` : celui de la ligue ou ce manager a le plus de points_ligue
     (un manager peut avoir un nom d'equipe different par ligue, aucun nom
     "canonique" ici -- meilleur choix disponible sans registre managers)."""
+    from core.general_bonus import apply_general_bonuses
+
     res = sb.table("division_classement_live").select("league_code,division,data").execute()
     rows = res.data or []
 
-    totals: dict[str, float] = {}
+    SUM_FIELDS = (
+        "score+", "score-", "victory", "draw", "defeat",
+        "cleanSheet", "manita", "on_fire", "grotaldo", "owngoals",
+    )
+    ENTRY_FIELD_MAP = {
+        "score+": "buts_pour", "score-": "buts_contre", "victory": "victoires",
+        "draw": "nuls", "defeat": "defaites",
+        "cleanSheet": "cleanSheet", "manita": "manita", "on_fire": "on_fire",
+        "grotaldo": "grotaldo", "owngoals": "owngoals",
+    }
+
+    stats_by_user: dict[str, dict] = {}
     best_team_name: dict[str, tuple[float, str]] = {}
     for row in rows:
         for entry in (row.get("data") or []):
             uid = entry.get("userId")
             if not uid:
                 continue
+            stats = stats_by_user.setdefault(uid, {"points": 0.0, **{k: 0 for k in SUM_FIELDS}})
             points_ligue = entry.get("points_ligue") or 0
-            totals[uid] = totals.get(uid, 0) + points_ligue
+            stats["points"] += points_ligue
+            for target_key, entry_key in ENTRY_FIELD_MAP.items():
+                stats[target_key] += entry.get(entry_key) or 0
+
             current_best = best_team_name.get(uid, (-1, ""))
             if points_ligue > current_best[0] and entry.get("teamName"):
                 best_team_name[uid] = (points_ligue, entry["teamName"])
 
-    ranked = sorted(totals.items(), key=lambda kv: -kv[1])
+    classement = list(stats_by_user.items())  # [(userId, stats), ...] -- format attendu par apply_general_bonuses
+    apply_general_bonuses(classement)
+
+    ranked = sorted(classement, key=lambda kv: -kv[1]["points"])
     return [
-        {"userId": uid, "teamName": best_team_name.get(uid, (0, ""))[1], "points": round(points, 1), "rang": i}
-        for i, (uid, points) in enumerate(ranked, start=1)
+        {
+            "userId": uid, "teamName": best_team_name.get(uid, (0, ""))[1],
+            "points": round(stats["points"], 1), "bonus_details": stats["bonus_details"], "rang": i,
+        }
+        for i, (uid, stats) in enumerate(ranked, start=1)
     ]

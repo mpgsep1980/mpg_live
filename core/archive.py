@@ -54,6 +54,7 @@ def archive_closed_gameweek_if_needed(sb, league: dict, closed_game_week: int, t
                 "score+": row["buts_pour"], "score-": row["buts_contre"],
                 "points_pond": row["points_pond"],
                 "cleanSheet": row["cleanSheet"], "manita": row["manita"], "on_fire": row["on_fire"],
+                "grotaldo": row["grotaldo"], "owngoals": row["owngoals"],
             }
             sb.table("league_classement_archive").upsert({
                 "league_code": short_id, "season": season, "division": division,
