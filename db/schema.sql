@@ -200,10 +200,29 @@ as $$
         set password_hash = excluded.password_hash, updated_at = now();
 $$;
 
--- A faire cote Supabase (dashboard SQL editor), pas encore inclus ici :
---   grant execute on function verify_manager_password to anon, authenticated;
---   grant execute on function set_manager_password to anon, authenticated;
---   (+ policies RLS pour les autres tables : lecture publique sur
---   live_snapshots/super_classement/league_classement_archive/
---   division_classement_live, ecriture reservee au role service_role
---   utilise par scripts/live_job.py)
+grant execute on function verify_manager_password to anon, authenticated;
+grant execute on function set_manager_password to anon, authenticated;
+
+-- ============================================================
+-- RLS -- lecture publique, ecriture reservee au role service_role (celui
+-- utilise par scripts/live_job.py, qui contourne RLS par defaut sur
+-- Supabase -- aucune policy d'ecriture a ajouter pour lui). Sans ceci,
+-- N'IMPORTE QUELLE table ci-dessus est lisible ET ECRIVABLE par la cle
+-- anonyme publique cote site (retour utilisateur 2026-08-23, ce TODO etait
+-- reste "a faire cote dashboard" sans jamais l'avoir ete).
+-- ============================================================
+alter table leagues enable row level security;
+alter table gameweek_state enable row level security;
+alter table live_snapshots enable row level security;
+alter table league_classement_archive enable row level security;
+alter table division_classement_live enable row level security;
+alter table super_classement enable row level security;
+alter table general_bonus_config enable row level security;
+
+create policy "public read" on leagues for select using (true);
+create policy "public read" on gameweek_state for select using (true);
+create policy "public read" on live_snapshots for select using (true);
+create policy "public read" on league_classement_archive for select using (true);
+create policy "public read" on division_classement_live for select using (true);
+create policy "public read" on super_classement for select using (true);
+create policy "public read" on general_bonus_config for select using (true);
