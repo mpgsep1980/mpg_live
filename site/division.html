@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MPG Live -- Classement de division</title>
+<link rel="stylesheet" href="mpg-tokens.css">
+<style>
+  /* Jetons de la charte "Mon Propre Gazon" -- police systeme, bordures
+     0.5px, rayon --mpg-radius (meme convention que site/manager.html). */
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: var(--mpg-title); }
+  h1 { font-size: 1.4rem; margin: 0 0 0.25rem; }
+  .meta { color: var(--mpg-text-soft); font-size: 0.85rem; }
+  .controls { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: end; margin: 1rem 0; }
+  .controls label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.75rem; color: var(--mpg-text-soft); }
+  .controls input {
+    border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); padding: 0.4rem 0.5rem;
+    font-size: 0.9rem; font-family: inherit; color: var(--mpg-title);
+  }
+  .controls button {
+    background: var(--mpg-action); color: #fff; border: none; border-radius: var(--mpg-radius);
+    padding: 0.5rem 1rem; font-size: 0.9rem; font-weight: 600; cursor: pointer;
+  }
+  .controls button:hover { background: var(--mpg-action-hover); }
+
+  /* --- Carte "Ma situation" --- */
+  .situation-card {
+    border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius);
+    padding: 1rem 1.25rem; margin: 1rem 0; background: var(--mpg-action-soft);
+  }
+  .situation-card h2 { margin: 0 0 0.75rem; font-size: 1rem; color: var(--mpg-title); }
+  .situation-grid { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+  .situation-item .value { font-size: 1.5rem; font-weight: 700; color: var(--mpg-action); line-height: 1.2; }
+  .situation-item .label { font-size: 0.75rem; color: var(--mpg-text-soft); }
+  .situation-note { margin: 0.75rem 0 0; font-size: 0.75rem; color: var(--mpg-text-soft); }
+
+  /* --- Tableau --- */
+  .table-wrap { overflow-x: auto; }
+  .mpg-table th, .mpg-table td { padding: 0.5rem 0.6rem; border-bottom: 0.5px solid var(--mpg-border-soft); }
+  .mpg-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .mpg-table td.team { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+  .badges { display: inline-flex; gap: 0.25rem; flex-wrap: wrap; }
+
+  .status-msg { color: var(--mpg-text-soft); font-size: 0.9rem; margin: 1rem 0; }
+  .status-msg.err { color: var(--mpg-danger); }
+
+  /* --- Empilement mobile plutot que scroll horizontal (charte section 5) --- */
+  @media (max-width: 640px) {
+    .mpg-table thead { display: none; }
+    .mpg-table, .mpg-table tbody, .mpg-table tr, .mpg-table td { display: block; width: 100%; }
+    .mpg-table tr {
+      border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius);
+      margin-bottom: 0.5rem; padding: 0.5rem 0.75rem;
+    }
+    .mpg-table td { border: none; padding: 0.15rem 0; display: flex; justify-content: space-between; }
+    .mpg-table td.num { text-align: right; }
+    .mpg-table td::before { content: attr(data-label); color: var(--mpg-text-soft); font-size: 0.75rem; }
+    .mpg-table td.team::before { content: none; }
+    .mpg-table td.rank::before { content: none; }
+    .mpg-table td.rank { font-weight: 700; font-size: 1.1rem; justify-content: flex-start; gap: 0.5rem; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Classement de division</h1>
+<div class="meta" id="subtitle">Chargement...</div>
+
+<div class="controls mpg-no-print">
+  <label>Code ligue<input id="leagueCode" value="QLKEN7K41"></label>
+  <label>Saison<input id="season" type="number" value="22" style="width:5em"></label>
+  <label>Division<input id="division" type="number" value="5" style="width:5em"></label>
+  <label>userId (Ma situation)<input id="userId" placeholder="user_..." style="width:10em"></label>
+  <button id="load-btn">Charger</button>
+</div>
+
+<div id="situation"></div>
+<div id="status" class="status-msg"></div>
+<div id="table-container"></div>
+
+<script type="module">
+  import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+  // Cle ANONYME/publishable uniquement -- jamais la cle service_role/secret,
+  // qui reste un secret GitHub Actions cote scripts/live_job.py. Lecture
+  // seule ici, garantie cote base par les policies RLS (cf. db/schema.sql).
+  const SUPABASE_URL = "https://zvmngpoogwjiknqrkjky.supabase.co";
+  const SUPABASE_ANON_KEY = "sb_publishable_YhAD0_spZJF58Dt_TTQplQ_VrFSKRK8";
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const params = new URLSearchParams(location.search);
+
+  // Champs URL pre-remplis si presents (lien partageable), sinon la valeur
+  // par defaut deja dans le formulaire (retour utilisateur -- meme
+  // convention que les autres pages du site, cf. admin/poules.html cote
+  // mpg_app : ?ligue=/&division=/&id= restent respectes tels quels).
+  for (const [param, id] of [["ligue", "leagueCode"], ["season", "season"], ["division", "division"], ["user", "userId"]]) {
+    const v = params.get(param);
+    if (v) document.getElementById(id).value = v;
+  }
+
+  const BADGE_TONE = { cs: "success", manita: "fire", onFire: "amber", boss: "gold", pichichi: "violet", mur: "steel" };
+
+  function fmt(n) {
+    if (n === null || n === undefined) return "–";
+    return Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\.0$/, "");
+  }
+
+  function badgeHtml(tone, label, value) {
+    if (!value) return "";
+    return `<span class="mpg-tag mpg-tag-${tone}">${label}${typeof value === "number" ? " " + fmt(value) : ""}</span>`;
+  }
+
+  function badgesFor(entry) {
+    return `<span class="badges">
+      ${badgeHtml(BADGE_TONE.cs, "CS", entry.cleanSheet)}
+      ${badgeHtml(BADGE_TONE.manita, "Manita", entry.manita)}
+      ${badgeHtml(BADGE_TONE.onFire, "En feu", entry.on_fire)}
+      ${badgeHtml(BADGE_TONE.boss, "Boss", entry.boss)}
+      ${badgeHtml(BADGE_TONE.pichichi, "Pichichi", entry.pichichi)}
+      ${badgeHtml(BADGE_TONE.mur, "Mur", entry.mur)}
+    </span>`;
+  }
+
+  function rowHtml(entry, isMe) {
+    const played = entry.matches_joues ?? 0;
+    return `
+      <tr class="${isMe ? "mpg-row-selected" : ""}">
+        <td class="rank" data-label="Rang">#${entry.rang}</td>
+        <td class="team" data-label="Équipe">${entry.teamName || entry.userId}</td>
+        <td class="num" data-label="Pts">${fmt(entry.points)}</td>
+        <td class="num" data-label="J">${fmt(played)}</td>
+        <td class="num" data-label="V">${fmt(entry.victoires)}</td>
+        <td class="num" data-label="N">${fmt(entry.nuls)}</td>
+        <td class="num" data-label="D">${fmt(entry.defaites)}</td>
+        <td class="num" data-label="BP">${fmt(entry.buts_pour)}</td>
+        <td class="num" data-label="BC">${fmt(entry.buts_contre)}</td>
+        <td class="num" data-label="DG">${entry.diff > 0 ? "+" : ""}${fmt(entry.diff)}</td>
+        <td data-label="Badges">${badgesFor(entry)}</td>
+      </tr>`;
+  }
+
+  function situationHtml(entry) {
+    if (!entry) return "";
+    return `
+      <div class="situation-card">
+        <h2>Ma situation</h2>
+        <div class="situation-grid">
+          <div class="situation-item"><div class="value">#${entry.rang}</div><div class="label">Rang de division</div></div>
+          <div class="situation-item"><div class="value">${entry.rang_ligue != null ? "#" + entry.rang_ligue : "–"}</div><div class="label">Rang de ligue</div></div>
+          <div class="situation-item"><div class="value">${fmt(entry.points_ligue)}</div><div class="label">Points (ligue)</div></div>
+        </div>
+        <p class="situation-note">Rang de ligue/points calculés sur une formule simplifiée v1 (sans Précieux ni Grotaldo) -- à affiner.</p>
+      </div>`;
+  }
+
+  async function load() {
+    const leagueCode = document.getElementById("leagueCode").value.trim();
+    const season = Number(document.getElementById("season").value);
+    const division = Number(document.getElementById("division").value);
+    const userId = document.getElementById("userId").value.trim();
+
+    const statusEl = document.getElementById("status");
+    const subtitleEl = document.getElementById("subtitle");
+    const situationEl = document.getElementById("situation");
+    const tableEl = document.getElementById("table-container");
+
+    statusEl.textContent = "Chargement...";
+    statusEl.className = "status-msg";
+    situationEl.innerHTML = "";
+    tableEl.innerHTML = "";
+
+    const { data, error } = await supabase
+      .from("division_classement_live")
+      .select("*")
+      .eq("league_code", leagueCode)
+      .eq("season", season)
+      .eq("division", division)
+      .limit(1);
+
+    if (error) {
+      statusEl.textContent = "Erreur : " + error.message;
+      statusEl.className = "status-msg err";
+      subtitleEl.textContent = "";
+      return;
+    }
+    if (!data.length) {
+      statusEl.textContent = "Aucun classement pour cette ligue/saison/division (jamais suivie, ou journée pas encore pollée).";
+      subtitleEl.textContent = "";
+      return;
+    }
+
+    const row = data[0];
+    statusEl.textContent = "";
+    subtitleEl.textContent = `Journée ${row.game_week}${row.is_live ? " · en direct" : " · dernière journée archivée"} · mis à jour ${new Date(row.updated_at).toLocaleString("fr-FR")}`;
+
+    const entries = row.data || [];
+    const myEntry = userId ? entries.find(e => e.userId === userId) : null;
+    situationEl.innerHTML = situationHtml(myEntry);
+
+    tableEl.innerHTML = `
+      <div class="table-wrap">
+        <table class="mpg-table">
+          <thead><tr>
+            <th>Rang</th><th>Équipe</th><th>Pts</th><th>J</th><th>V</th><th>N</th><th>D</th>
+            <th>BP</th><th>BC</th><th>DG</th><th>Badges</th>
+          </tr></thead>
+          <tbody>${entries.map(e => rowHtml(e, userId && e.userId === userId)).join("")}</tbody>
+        </table>
+      </div>`;
+  }
+
+  document.getElementById("load-btn").addEventListener("click", load);
+  load();
+</script>
+
+</body>
+</html>
