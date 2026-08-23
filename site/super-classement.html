@@ -30,6 +30,7 @@
   .mpg-table th, .mpg-table td { padding: 0.5rem 0.6rem; border-bottom: 0.5px solid var(--mpg-border-soft); }
   .mpg-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .mpg-table tbody tr.hidden { display: none; }
+  .badges { display: inline-flex; gap: 0.25rem; flex-wrap: wrap; }
 
   .status-msg { color: var(--mpg-text-soft); font-size: 0.9rem; margin: 1rem 0; }
   .status-msg.err { color: var(--mpg-danger); }
@@ -49,7 +50,7 @@
 <div class="search-row mpg-no-print">
   <input type="text" id="search" placeholder="Rechercher un manager...">
 </div>
-<p class="meta">Points = somme des classements de ligue (formule simplifiée v1). Aucun des 15 bonus généraux (Sulfateuse, Winner, Gollum, etc.) ni Multi Boss n'est encore appliqué ici -- à compléter dans un chantier séparé.</p>
+<p class="meta">Points = somme des classements de ligue (formule simplifiée v1) + bonus généraux ci-dessous. 12 des 16 bonus généraux sont actifs (Sulfateuse, Rideau de Fer, En feu, L'Araignée, High Five, King Grotaldo, etc.) ; La Piñata, Gollum, Poulidor et La Chèvre restent inertes en attendant leurs données sources. Multi Boss n'est pas encore porté -- à compléter dans un chantier séparé.</p>
 
 <div id="status" class="status-msg"></div>
 <div id="table-container"></div>
@@ -73,6 +74,38 @@
     return Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\.0$/, "");
   }
 
+  // Tons reserves aux categories qui peuvent reellement afficher une valeur
+  // non nulle (cf. core/general_bonus.py::apply_general_bonuses -- une
+  // categorie avec points=0, comme Winner/Pétard Mouillé/Passoire/FFL/
+  // Macroniste/Harry Maguire Challenge/La Chèvre, ecrit TOUJOURS 0 dans
+  // bonus_details meme quand elle est "gagnee" : filtrees naturellement par
+  // bonusBadges() ci-dessous sans liste d'exclusion a maintenir). Categories
+  // encore inertes en v1 (La Piñata/Gollum/Poulidor) gardees dans la table
+  // au cas ou leurs donnees sources arrivent plus tard.
+  const BONUS_TONE = {
+    "Sulfateuse": "fire",
+    "Rideau de Fer": "steel",
+    "En feu": "amber",
+    "L'Araignée": "success",
+    "High Five": "grass",
+    "King Grotaldo": "danger",
+    "La Piñata": "gold",
+    "Gollum": "violet",
+    "Poulidor": "silver",
+  };
+
+  function bonusBadges(bonusDetails) {
+    if (!bonusDetails) return "";
+    return `<span class="badges">${Object.entries(bonusDetails)
+      .filter(([name, pts]) => name !== "teamName" && pts)
+      .map(([name, pts]) => {
+        const tone = BONUS_TONE[name] || "neutral";
+        const sign = pts > 0 ? "+" : "";
+        return `<span class="mpg-tag mpg-tag-${tone}">${name} ${sign}${fmt(pts)}</span>`;
+      })
+      .join("")}</span>`;
+  }
+
   function rowHtml(row, isMe) {
     const teamName = (row.bonus_details && row.bonus_details.teamName) || row.user_id;
     return `
@@ -80,6 +113,7 @@
         <td class="rank">#${row.rang}</td>
         <td>${teamName}</td>
         <td class="num">${fmt(row.points)}</td>
+        <td>${bonusBadges(row.bonus_details)}</td>
       </tr>`;
   }
 
@@ -129,7 +163,7 @@
     tableEl.innerHTML = `
       <div class="table-wrap">
         <table class="mpg-table">
-          <thead><tr><th>Rang</th><th>Équipe</th><th>Pts</th></tr></thead>
+          <thead><tr><th>Rang</th><th>Équipe</th><th>Pts</th><th>Bonus</th></tr></thead>
           <tbody>${data.map(r => rowHtml(r, userId && r.user_id === userId)).join("")}</tbody>
         </table>
       </div>`;
