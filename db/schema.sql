@@ -169,11 +169,17 @@ alter table accounts enable row level security;
 
 create extension if not exists pgcrypto;
 
+-- search_path = public, extensions (pas juste public) -- sur Supabase,
+-- pgcrypto s'installe par defaut dans le schema "extensions", pas "public"
+-- (retour utilisateur 2026-08-23 : "function crypt(text, text) does not
+-- exist" a l'execution -- l'extension existait bien, juste invisible pour
+-- une fonction SECURITY DEFINER dont le search_path ne couvrait pas le bon
+-- schema).
 create or replace function verify_manager_password(p_user_id text, p_password text)
 returns boolean
 language sql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
     select exists (
         select 1 from accounts
@@ -186,7 +192,7 @@ create or replace function set_manager_password(p_user_id text, p_password text)
 returns void
 language sql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
     insert into accounts (user_id, password_hash)
     values (p_user_id, crypt(p_password, gen_salt('bf')))
