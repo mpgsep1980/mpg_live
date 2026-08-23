@@ -6,12 +6,30 @@ table Supabase `leagues` -- sa colonne `scoring` jsonb a la meme forme que
 portees ici sans aucun changement de logique).
 
 Port partiel de mpg_app/core/league.py : uniquement get_scoring_config,
-get_internal_bonus_config, get_match_bonus_config, DEFAULT_MATCH_BONUS_CONFIG.
-Pas de load_leagues/save_leagues/get_all_leagues (I/O fichier) -- remplaces
-par la version Supabase deja presente dans scripts/live_job.py.
+get_internal_bonus_config, get_match_bonus_config, DEFAULT_MATCH_BONUS_CONFIG,
+current_real_season_start_year. Pas de load_leagues/save_leagues/
+get_all_leagues (I/O fichier) -- remplaces par la version Supabase deja
+presente dans scripts/live_job.py.
 """
+from datetime import datetime
+
 from core.scoring import DEFAULT_SCORING_CONFIG
 from core.internal_bonus import DEFAULT_INTERNAL_BONUS_CONFIG
+
+
+def current_real_season_start_year() -> int:
+    """Annee de debut de la saison reelle actuellement suivie (ex. 2026 pour
+    "2026-2027") -- regle calendaire standard "la saison commence en aout",
+    identique a mpg_app/core/league.py (meme fonction, meme regle -- a NE
+    JAMAIS diverger). Sert a nommer la saison du Super Classement
+    (core/live_projection.py::compute_super_classement) plutot que le
+    compteur de saison MPG d'UNE ligue (league["seasonSearch"]) : deux
+    ligues suivant la MEME saison calendaire reelle peuvent avoir des
+    compteurs MPG differents (ex. Ligue_2_EKT=21, Liga_Tapas=22 en meme
+    temps, retour utilisateur 2026-08-23) -- une saison calendaire de foot
+    peut regrouper plusieurs saisons MPG."""
+    now = datetime.now()
+    return now.year if now.month >= 8 else now.year - 1
 
 
 def get_scoring_config(league: dict) -> dict:

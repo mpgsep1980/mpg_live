@@ -309,3 +309,62 @@ def finalize_division_data(division_rows: list[dict], league_ranks: dict[str, di
         entry["points_ligue"] = lr.get("points_ligue")
         out.append(entry)
     return out
+
+
+def compute_super_classement(sb) -> list[dict]:
+    """Classement croise TOUTES LIGUES CONFONDUES -- version volontairement
+    reduite du Super Classement cote mpg_app (retour utilisateur 2026-08-23,
+    "je te laisse poursuivre... tu connais la finalite" -- avance par etapes
+    livrables plutot que de bloquer sur le port complet).
+
+    Somme "points_ligue" (deja calcule par resolve_league_wide_ranks, cf.
+    division_classement_live) pour chaque manager sur TOUTES les divisions
+    de TOUTES les ligues ou il apparait -- couvre le cas d'un manager membre
+    de plusieurs des ligues suivies. AUCUN des 15 bonus generaux
+    (core/general_bonus.py cote mpg_app -- Sulfateuse/Winner/Gollum/etc.) ni
+    Multi Boss n'est applique ici : leurs champs sources (owngoals, Ycards/
+    Rcards, Precious_Count, les 8 compteurs *_DTC de La Piñata...) ne sont
+    tout simplement pas suivis par le schema Supabase actuel
+    (league_classement_archive.stats, cf. db/schema.sql) -- LIMITE CONNUE
+    v1, a completer dans un chantier separe une fois ces champs ajoutes.
+    Departage : points seuls (pas le tri a 6 criteres de mpg_app -- Ycards/
+    Rcards absents ici pour la meme raison).
+
+    PAS de filtre par "season" ici, volontairement -- deux ligues suivant la
+    MEME saison calendaire reelle peuvent avoir des compteurs de saison MPG
+    differents (ex. Ligue_2_EKT=21, Liga_Tapas=22 en meme temps, retour
+    utilisateur 2026-08-23 : "une saison calendaire de foot peut regrouper
+    plusieurs saisons MPG", meme piege deja documente cote mpg_app). Comme
+    division_classement_live est upserte en place (PK sans game_week, cf.
+    db/schema.sql), fusionner tout son contenu actuel donne naturellement
+    l'etat "en ce moment", sans avoir a reconcilier des compteurs de saison
+    incomparables entre ligues. La saison ECRITE dans super_classement (par
+    l'appelant, cf. scripts/live_job.py) utilise plutot
+    core.league.current_real_season_start_year() -- la meme regle
+    calendaire que mpg_app, jamais un compteur de saison MPG d'une ligue en
+    particulier.
+
+    `teamName` : celui de la ligue ou ce manager a le plus de points_ligue
+    (un manager peut avoir un nom d'equipe different par ligue, aucun nom
+    "canonique" ici -- meilleur choix disponible sans registre managers)."""
+    res = sb.table("division_classement_live").select("league_code,division,data").execute()
+    rows = res.data or []
+
+    totals: dict[str, float] = {}
+    best_team_name: dict[str, tuple[float, str]] = {}
+    for row in rows:
+        for entry in (row.get("data") or []):
+            uid = entry.get("userId")
+            if not uid:
+                continue
+            points_ligue = entry.get("points_ligue") or 0
+            totals[uid] = totals.get(uid, 0) + points_ligue
+            current_best = best_team_name.get(uid, (-1, ""))
+            if points_ligue > current_best[0] and entry.get("teamName"):
+                best_team_name[uid] = (points_ligue, entry["teamName"])
+
+    ranked = sorted(totals.items(), key=lambda kv: -kv[1])
+    return [
+        {"userId": uid, "teamName": best_team_name.get(uid, (0, ""))[1], "points": round(points, 1), "rang": i}
+        for i, (uid, points) in enumerate(ranked, start=1)
+    ]

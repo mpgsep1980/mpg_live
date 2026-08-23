@@ -42,7 +42,10 @@ from core.api import (
 )
 from core.live_scoring import compute_division_live_scores, collect_real_match_ids
 from core.archive import archive_closed_gameweek_if_needed
-from core.live_projection import league_setup, resolve_division_rows, resolve_league_wide_ranks, finalize_division_data
+from core.live_projection import (
+    league_setup, resolve_division_rows, resolve_league_wide_ranks, finalize_division_data, compute_super_classement,
+)
+from core.league import current_real_season_start_year
 
 
 def supabase_client() -> Client:
@@ -205,6 +208,29 @@ def main() -> None:
             }).execute()
         except Exception as e:
             print(f"  {name} : erreur inattendue ce tick ({e}) -- reessai au prochain cron.")
+
+    # Super Classement croise toutes ligues -- UNE fois par tick (pas par
+    # ligue, cf. sa docstring : fusionne tout division_classement_live
+    # d'un coup). Propre try/except, meme principe que chaque ligue
+    # ci-dessus -- ne doit jamais faire echouer le reste du tick.
+    try:
+        season = current_real_season_start_year()
+        ranked = compute_super_classement(sb)
+        now_iso = datetime.now(timezone.utc).isoformat()
+        for row in ranked:
+            sb.table("super_classement").upsert({
+                "season": season, "user_id": row["userId"], "points": row["points"],
+                # super_classement n'a pas de colonne teamName dediee (cf.
+                # db/schema.sql) -- range ici, dans le seul champ jsonb libre
+                # de la table, plutot que d'ajouter une colonne pour ca
+                # maintenant (aucun VRAI bonus n'y est encore stocke, cf.
+                # docstring compute_super_classement -- {} sinon).
+                "bonus_details": {"teamName": row.get("teamName", "")},
+                "updated_at": now_iso,
+            }).execute()
+        print(f"  Super Classement : {len(ranked)} manager(s) ecrits pour la saison {season}.")
+    except Exception as e:
+        print(f"  Super Classement : erreur inattendue ce tick ({e}) -- reessai au prochain cron.")
 
 
 if __name__ == "__main__":
