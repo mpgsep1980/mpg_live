@@ -38,8 +38,11 @@ from core.api import (
     get_division_matches,
     get_championship_match,
     get_dashboard,
+    get_division_team_names,
 )
 from core.live_scoring import compute_division_live_scores, collect_real_match_ids
+from core.archive import archive_closed_gameweek_if_needed
+from core.live_projection import league_setup, resolve_division_rows, resolve_league_wide_ranks, finalize_division_data
 
 
 def supabase_client() -> Client:
@@ -86,7 +89,9 @@ def poll_league(sb: Client, league: dict, game_week: int) -> None:
     """Un tour de poll pour toute la ligue -- meme logique que
     live_watch.py::fetch_league_live_snapshot cote mpg_app (mutualise les
     matchs reels entre divisions), ecrit dans Supabase au lieu d'un fichier
-    local."""
+    local. Ecrit aussi division_classement_live (classement deja resolu --
+    rang/badges/bonus internes, cf. core/live_projection.py) division par
+    division, pour que site/division.html n'ait plus qu'a lire une ligne."""
     short_id = league["code"]
     season = league["seasonSearch"]
     total_divisions = get_live_total_divisions(short_id)
@@ -99,8 +104,10 @@ def poll_league(sb: Client, league: dict, game_week: int) -> None:
 
     real_matches_by_id = {mid: get_championship_match(mid) for mid in all_match_ids}
 
+    results_by_div = {}
     for division, division_matches in division_matches_by_div.items():
         results = compute_division_live_scores(division_matches, real_matches_by_id)
+        results_by_div[division] = results
         sb.table("live_snapshots").upsert({
             "league_code": short_id,
             "season": season,
@@ -111,6 +118,29 @@ def poll_league(sb: Client, league: dict, game_week: int) -> None:
         }).execute()
 
     print(f"  {league['nom']} : {total_divisions} division(s) ecrites pour J{game_week}.")
+
+    # Classement de division deja resolu (rang/badges/Pichichi/Le_Mur/Boss) --
+    # une passe par division (resolve_division_rows), puis une passe croisee
+    # toutes divisions confondues pour rang_ligue/points_ligue (retour
+    # utilisateur 2026-08-21, plan "Page Division pour mpg_live").
+    setup = league_setup(sb, league, list(range(1, total_divisions + 1)), game_week)
+    rows_by_division = {}
+    for division, division_matches in results_by_div.items():
+        rows, _is_live = resolve_division_rows(league, division, division_matches, game_week, total_divisions, setup)
+        rows_by_division[division] = rows
+    league_ranks = resolve_league_wide_ranks(rows_by_division, setup["match_bonus_cfg"])
+
+    now = datetime.now(timezone.utc).isoformat()
+    for division, rows in rows_by_division.items():
+        try:
+            team_names = get_division_team_names(short_id, season, division)
+        except Exception:
+            team_names = {}
+        data = finalize_division_data(rows, league_ranks, team_names)
+        sb.table("division_classement_live").upsert({
+            "league_code": short_id, "season": season, "division": division,
+            "game_week": game_week, "data": data, "is_live": True, "updated_at": now,
+        }).execute()
 
 
 def main() -> None:
@@ -129,6 +159,21 @@ def main() -> None:
     for league in leagues:
         name, short_id = league["nom"], league["code"]
         try:
+            # Archivage de la journee PRECEDENTE, independant de la journee
+            # EN COURS calculee plus bas -- doit se faire meme si aucune
+            # nouvelle fenetre n'est encore ouverte/connue. Idempotent
+            # (is_gameweek_archived), donc verifie a CHAQUE tick sans risque
+            # de double-compte -- retour utilisateur 2026-08-23 : c'est cette
+            # meme discipline (sonde de sante a chaque tick plutot qu'un
+            # declenchement one-shot) qui a corrige le meme genre de bug
+            # cote mpg_app (live_scheduler.py).
+            prev_state_res = sb.table("gameweek_state").select("*").eq("league_code", short_id).execute()
+            if prev_state_res.data:
+                prev_state = prev_state_res.data[0]
+                if now > parse_iso(prev_state["window_end"]):
+                    total_divisions = get_live_total_divisions(short_id)
+                    archive_closed_gameweek_if_needed(sb, league, prev_state["game_week"], total_divisions)
+
             champ_id = championship_ids.get(short_id)
             if champ_id is None:
                 print(f"  {name} : championshipId introuvable sur le dashboard, ignoree ce tick.")

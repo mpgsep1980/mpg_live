@@ -1,4 +1,5 @@
 import sys
+import time
 from pathlib import Path
 import requests
 
@@ -7,6 +8,19 @@ from config import MPG_API
 from core.token import load_token, decode_token_owner_id
 
 TIMEOUT = 10
+
+# Cache en memoire (process courant) pour get_championship_match -- retour
+# utilisateur 2026-08-16 : /api/live-scenario, /api/live-sweep et
+# /api/division-classement (branche "Mon Bonus") refetchent chacun,
+# INDEPENDAMMENT, les memes ~10 vrais matchs a chaque interaction utilisateur
+# (aucun cache avant ce correctif) -- mesure : 4.76s pour 10 fetch sequentiels,
+# contre 0.01s pour 17 recalculs de score (compute_division_live_scores est
+# du pur calcul, pas le goulot -- le reseau l'est). TTL court (le score/la
+# minute d'un match REELLEMENT en direct doit rester a jour) mais suffisant
+# pour dedupliquer les 2-3 endpoints qui se declenchent en rafale sur la MEME
+# interaction (quelques secondes d'ecart, pas plus).
+_CHAMPIONSHIP_MATCH_CACHE: dict[str, tuple[float, dict]] = {}
+_CHAMPIONSHIP_MATCH_CACHE_TTL = 15.0
 
 
 def build_headers(token: str = None) -> dict:
@@ -124,7 +138,18 @@ def get_division_matches(short_id: str, season_number: int, division_number: int
     tacticalSubs) et, par joueur, son matchId REEL (cf. get_championship_match).
     NE contient PAS le score/la note en direct malgre les apparences
     (home['score']/away['score'] restent a 0 et status a 1 meme match en cours,
-    verifie 2026-08-08) -- le direct est uniquement dans get_championship_match."""
+    verifie 2026-08-08) -- le direct est uniquement dans get_championship_match.
+
+    IMPORTANT (retour utilisateur 2026-08-18, verifie sur des vrais matchs) :
+    match["status"] passe de 1 (encore provisoire, pas de note/bonusesDetails
+    joueur meme APRES la fin du vrai match -- MPG met jusqu'a ~7h a tout
+    stabiliser) a 2 avec match["finalResult"]=True une fois REELLEMENT
+    termine cote MPG -- a ce moment-la seulement, chaque joueur porte
+    "rating" (note finale) ET "bonusesDetails" (coups reellement joues),
+    et team["badges"]/["bonuses"] sont a jour (Grotaldo, formation, etc.).
+    Signal fiable pour savoir quand capturer l'archive "en dur" -- bien
+    plus precis qu'un minuteur (cf. plan avant/apres, live_watch.py/
+    live_scheduler.py)."""
     division_id = f"mpg_division_{short_id}_{season_number}_{division_number}"
     url = f"{MPG_API}/division/{division_id}/game-week/{game_week}/matches"
     r = requests.get(url, headers=build_headers(token), timeout=TIMEOUT)
@@ -133,14 +158,21 @@ def get_division_matches(short_id: str, season_number: int, division_number: int
 
 
 def get_division_calendar(short_id: str, season_number: int, division_number: int, token: str = None) -> dict:
-    """Calendrier COMPLET d'une division pour une saison. Renvoie
-    {"fixtures": [{"gameWeek", "realGameWeek", "matchesIds",
-    "previousTargetMan", "afterTargetMan"}, ...]} -- UNE entree par journee
-    de TOUTE la saison en un seul appel. Sert ici uniquement a determiner la
-    longueur REELLE de la phase en cours (fixtures[-1]["gameWeek"]) -- cf.
-    core/live_projection.py::true_last_gameweek, port de mpg_app (meme bug
-    B1 deja corrige a preserver : ne jamais deduire cette longueur d'une
-    config de ligue, qui represente la phase SUIVANTE, pas la courante)."""
+    """Calendrier COMPLET d'une division pour une saison (endpoint trouve dans
+    MPG_Ligue_2_EKT_Test_2025.ipynb/Super_Classement_General_V2.ipynb, jamais
+    utilise nulle part dans ce code avant ce correctif -- retour utilisateur
+    2026-08-18). Renvoie {"fixtures": [{"gameWeek", "realGameWeek",
+    "matchesIds", "previousTargetMan", "afterTargetMan"}, ...]} -- UNE
+    entree par journee de TOUTE la saison en un seul appel (verifie : 14
+    fixtures d'un coup sur une saison complete, pas besoin de repeter
+    l'appel par journee). "previousTargetMan"/"afterTargetMan" sont des
+    TEAM ID (mpg_team_..., PAS des userId) -- a mapper via
+    get_division_matches (home/away["teamId"]/["userId"] de la meme
+    division/saison) -- absents pour les journees dont le vrai resultat
+    n'est pas encore confirme par MPG (meme delai que get_division_matches,
+    cf. sa docstring). Seule source fiable du "Precieux" (afterTargetMan) --
+    PAS dans get_division_matches, contrairement au reste (score/badges/
+    bonusesDetails/remplacements)."""
     division_id = f"mpg_division_{short_id}_{season_number}_{division_number}"
     url = f"{MPG_API}/division/{division_id}/calendar"
     r = requests.get(url, headers=build_headers(token), timeout=TIMEOUT)
@@ -182,15 +214,39 @@ def get_division_team_names(short_id: str, season_number: int, division_number: 
     return result
 
 
+def get_division_match_detail(match_id: str, token: str = None) -> dict:
+    """Detail complet d'UN match de division (endpoint trouve par l'utilisateur,
+    2026-08-10 : /division-match/{matchId}, distinct de get_division_matches qui
+    ne donne que la liste + bonuses/badges au niveau EQUIPE). Donne notamment
+    home/away["players"][playerId]["bonusesDetails"] -- bonus specifiques recus
+    par CE joueur dans CE match (captain, boostDefense4/5, mais aussi les bonus
+    "attaques" par l'adversaire type nerfGoalkeeper/Suarez, mandatorySubstitution,
+    etc.), la ou get_division_matches ne donne qu'un flag au niveau equipe sans
+    dire QUI l'a recu. Fonctionne aussi sur de vieux matchs clos (verifie sur
+    une saison 2023-2024)."""
+    r = requests.get(f"{MPG_API}/division-match/{match_id}", headers=build_headers(token), timeout=TIMEOUT)
+    r.raise_for_status()
+    return r.json()
+
+
 def get_championship_match(match_id: str, token: str = None) -> dict:
     """Etat REEL d'un match de championnat (endpoint trouve en observant un match
     en direct, 2026-08-08) : period ("firstHalf"/...), matchTime ("23'"), score
     reel home/away, et par joueur mpgRating (note live) + score (points fantasy
     detailles) + stats. `match_id` vient de get_division_matches
-    (players[playerId]['matchId'])."""
+    (players[playerId]['matchId']). Mis en cache _CHAMPIONSHIP_MATCH_CACHE_TTL
+    secondes (cf. sa docstring) -- appelant qui a besoin d'un etat garanti frais
+    (rare) peut vider _CHAMPIONSHIP_MATCH_CACHE.pop(match_id, None) avant
+    d'appeler."""
+    now = time.monotonic()
+    cached = _CHAMPIONSHIP_MATCH_CACHE.get(match_id)
+    if cached and now - cached[0] < _CHAMPIONSHIP_MATCH_CACHE_TTL:
+        return cached[1]
     r = requests.get(f"{MPG_API}/championship-match/{match_id}", headers=build_headers(token), timeout=TIMEOUT)
     r.raise_for_status()
-    return r.json()
+    data = r.json()
+    _CHAMPIONSHIP_MATCH_CACHE[match_id] = (now, data)
+    return data
 
 
 def get_league_join_status(short_id: str, token: str = None) -> dict[str, set[str]]:

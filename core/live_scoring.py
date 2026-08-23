@@ -50,14 +50,17 @@ Cout : la 1ere ligne passee coute -1 a la note du joueur, chaque ligne
 suivante passee coute -0.5 -- applique immediatement, donc la comparaison de
 l'etape suivante se fait avec la note deja reduite (progression cumulative).
 
-Recompense : si un joueur passe TOUTES ses lignes (gardien adverse compris),
-il marque un "but MPG" pour son EQUIPE -- pas de bareme de points invente ici
-(pas de "but classique" : les seuls buts avec un bareme sont les vrais buts
-marques dans les matchs reels, deja captes par mpgRating cf. plus haut). Le but
-MPG est donc juste compte (team["buts_mpg"]), pas ajoute a la note du joueur --
-seule la penalite de la derniere ligne (le duel contre le gardien) s'applique
-a sa note, comme n'importe quelle autre ligne franchie. EXCEPTION : un joueur
-ayant deja marque un but REEL dans son match (stats.goals >= 1, cf.
+Recompense : si un joueur passe TOUTES ses lignes (gardien adverse compris)
+ET a une note EFFECTIVE (bonus compris, avant toute penalite de duel) d'AU
+MOINS 5/10 -- regle officielle MPG R1, retour utilisateur 2026-08-18 confirme
+avec Ilan, absente avant ce correctif -- il marque un "but MPG" pour son
+EQUIPE -- pas de bareme de points invente ici (pas de "but classique" : les
+seuls buts avec un bareme sont les vrais buts marques dans les matchs reels,
+deja captes par mpgRating cf. plus haut). Le but MPG est donc juste compte
+(team["buts_mpg"]), pas ajoute a la note du joueur -- seule la penalite de la
+derniere ligne (le duel contre le gardien) s'applique a sa note, comme
+n'importe quelle autre ligne franchie. EXCEPTION : un joueur ayant deja
+marque un but REEL dans son match (stats.goals >= 1, cf.
 get_championship_match) ne peut pas marquer de but MPG en plus -- il "passe"
 quand meme la ligne du gardien (penalite appliquee comme d'habitude), seul le
 comptage du but MPG est retire.
@@ -105,6 +108,22 @@ Deux mecanismes, le tactique prioritaire sur l'obligatoire :
    gardien) -- j'ai suppose Rotaldo direct dans ce cas (pas de bascule vers un
    milieu), a confirmer.
 
+   IMPORTANT (bug corrige 2026-08-15) : "n'a pas joue" ne veut dire "absent
+   pour de bon" QUE si son VRAI match est TERMINE (real_match["period"] in
+   FINISHED_MATCH_PERIODS, cf. compute_player_live_score -> match_finished).
+   Une journee MPG etale ses vrais matchs sur plusieurs jours (ex. Liga_Tapas
+   J1, 2026-08-15 : matchs du 15 au 27 aout) -- tant que le match d'un
+   titulaire n'a pas commence OU est encore en cours, 0 minute ne prouve rien
+   (il peut entrer plus tard, ou son match n'a simplement pas encore eu lieu).
+   Avant ce correctif, la passe 2 traitait TOUT le monde comme confirme absent
+   des la minute 1 de la journee -- Rotaldo en cascade sur la quasi-totalite
+   du XI de tous les managers, des scores de duel de lignes incoherents des
+   l'ouverture de la fenetre MPG (retour utilisateur : "Les scores sont
+   delirants"). Un titulaire pas encore fixe (match pas fini) est desormais
+   "en attente" : ni substitue, ni Rotaldo, effective_note=None (exclu du
+   total provisoire et du duel de lignes jusqu'a ce que son vrai match se
+   termine).
+
 Capitaine : le bonus capitaine (+0.5, deja dans note_finale du titulaire
 d'origine) n'est PAS transfere si le capitaine est remplace (tactique ou
 obligatoire) -- il est juste perdu pour l'equipe ce match-la (regle explicite
@@ -114,7 +133,22 @@ Rotaldo / CSC : chaque slot en Rotaldo compte dans team["rotaldo_count"].
 Tous les 3 Rotaldo dans le XI final, l'equipe encaisse un CSC (but contre son
 camp) -- implemente comme +1 au SCORE DE L'ADVERSAIRE (team["csc_conceded"] =
 rotaldo_count // 3), coherent avec le sens reel de "CSC" (but marque pour
-l'autre equipe), ajoute au tableau de bord (apply_line_battles).
+l'autre equipe), ajoute au tableau de bord (apply_line_battles). Ce comptage
+est CONFIRME (chaque Rotaldo qui y contribue n'est retenu qu'une fois son
+vrai match TERMINE, cf. "IMPORTANT" ci-dessus) -- correspond au badge
+officiel MPG "bigRotaldo"/Grotaldo, revele par MPG seulement a la fin du
+match reel (jamais en direct, meme contrainte que team["bonusesDetails"]).
+
+PAS de mecanisme "Grotaldo provisoire" separe (retire le 2026-08-17) : un
+ancien heuristique comptait tout titulaire D'ORIGINE encore a 0 minute des
+que son vrai match avait demarre, MEME quand un remplacant tactique/
+obligatoire valide avait deja couvert son poste (donc un joueur bel et bien
+SUR LE TERRAIN a ce slot) -- retour utilisateur : "Seuls les joueurs sur le
+terrain comptent comme un grotaldo... si dans le scenario actuel il n'y a
+que 2 Rotaldo sur le terrain alors pas de CSC Grotaldo". rotaldo_count
+(ci-dessus) EST deja ce "scenario a l'instant T" -- deja provisoire par
+nature (augmente au fil des vrais matchs qui se terminent), seule source de
+verite desormais.
 
 Hors scope pour l'instant : "Option 2, remplacements live week-end" (mode
 alternatif choisi par l'admin de ligue a la place du tactique -- cf.
@@ -142,7 +176,10 @@ Phase 1 implementee (modificateurs de note simples, pas d'interaction avec
 remplacements/buts/autres bonus) -- cles identiques a BONUS_LABELS
 (core/scoring.py) pour rester coherent avec le suivi des badges MPG :
 - boostAllPlayers (Zahia) : +0.5 a TOUS les titulaires alignes de sa propre
-  equipe (gardien compris, aucune exclusion mentionnee dans le reglement).
+  equipe (gardien compris, aucune exclusion mentionnee dans le reglement) --
+  EXCLUT les remplacants (tactique ou obligatoire, cf. apply_own_bonus_effect
+  -- retour utilisateur 2026-08-17 : "Une zahia s'applique uniquement aux
+  titulaires", confirme impossible autrement).
 - boostOnePlayer (McDo+) : +1 a UN titulaire choisi par le manager
   (targetPlayerId, doit faire partie du XI final).
 - nerfGoalkeeper (Suarez) : -1 au gardien de l'equipe ADVERSE.
@@ -174,8 +211,32 @@ note, cf. resolve_match_bonus_effects/apply_removed_goal plus bas :
   lanceur original. Si les deux managers jouent Miroir simultanement, aucun
   effet a refleter (no-op).
 """
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 ROTALDO_NOTE = 2.5
+
+# period terminal cote get_championship_match -- "fullTime" confirme par
+# l'observation (2026-08-15), les deux autres sont une hypothese pour les
+# matchs a prolongation (Ligue des Champignons uniquement, pas encore
+# observe en vrai) -- a corriger si un jour un ecart est constate.
+FINISHED_MATCH_PERIODS = {"fullTime", "afterExtraTime", "afterPenalties"}
+
+# Valeurs de "period" observees AVANT le coup d'envoi -- retour utilisateur
+# 2026-08-23 : Lega_Calzone D12 J1, le gardien adverse (Vicario, vrai match
+# pas encore commence) avait "period": "preMatch", une valeur NON-None que
+# real_match_started traitait a tort comme "deja demarre" (l'hypothese
+# d'origine etait que period reste absent/None jusqu'au coup d'envoi, cf.
+# docstring compute_player_live_score) -- sa note restait donc None au lieu
+# de la note par defaut 5 (meme regle que tout titulaire pas encore joue),
+# ce qui bloquait la ligne de gardien adverse ENTIERE (moyenne introuvable,
+# cf. _line_average) et empechait tout attaquant en face de terminer son
+# duel de lignes jusqu'au bout -- 2 buts MPG manquants (Adam Obert, Andy
+# Diouf, tous deux a egalite exacte 5.0 contre la note par defaut du
+# gardien, tranchee en faveur du domicile).
+NOT_STARTED_MATCH_PERIODS = {"preMatch"}
 
 POSITION_GOALKEEPER = 1
 POSITION_DEFENDER = 2
@@ -217,23 +278,68 @@ def formation_defender_bonus(position: int | None, composition) -> float:
 
 
 def _find_real_player(real_match: dict, player_id: str) -> dict | None:
-    """Cherche `player_id` dans /championship-match/{matchId} (home ou away)."""
+    """Cherche `player_id` dans /championship-match/{matchId} (home ou away).
+    Tant que le vrai match n'a pas donne son coup d'envoi, home/away se
+    reduisent a {clubId, rank} (pas de cle "players" du tout) -- une journee
+    MPG peut regrouper des vrais matchs a des heures differentes (observe
+    Liga_Tapas J1, 2026-08-15 : fenetre MPG ouverte a 17:30 alors que certains
+    matchs de Liga demarrent plus tard). Pas encore joue = pas encore de note,
+    donc None comme pour un joueur introuvable."""
     for side in ("home", "away"):
-        rp = real_match[side]["players"].get(player_id)
+        rp = real_match[side].get("players", {}).get(player_id)
         if rp:
             return rp
     return None
 
 
 def _goal_times_for(real_match: dict, player_id: str) -> list[str]:
-    """Minutes des buts REELS de `player_id` dans `real_match` -- evenements
-    home["goals"]/away["goals"] (liste {scorerId, time, ...}), plus fiable que
-    de juste compter stats.goals (donne aussi la minute pour l'affichage)."""
+    """Minutes des buts REELS PERSONNELS de `player_id` dans `real_match` --
+    evenements home["goals"]/away["goals"] (liste {scorerId, time, type,
+    ...}), plus fiable que de juste compter stats.goals (donne aussi la
+    minute pour l'affichage). Exclut type=="own" (bug corrige 2026-08-16,
+    retour utilisateur -- Ismael Doukoure marque un CSC, scorerId POINTE bien
+    vers lui, mais ce n'est PAS un vrai but a son actif -- cf.
+    _own_goals_scored_by_player pour le traitement cote equipe qui l'encaisse)."""
     return [
         event.get("time", "")
         for side in ("home", "away")
         for event in (real_match[side].get("goals") or [])
-        if event.get("scorerId") == player_id
+        if event.get("scorerId") == player_id and event.get("type") != "own"
+    ]
+
+
+def _own_goals_scored_by_player(real_match: dict, own_side: str | None, player_id: str) -> list[dict]:
+    """Buts CSC (type == "own") marques PAR CE JOUEUR precis dans SON PROPRE
+    vrai match -- confirme sur donnees reelles (retour utilisateur 2026-08-16,
+    Ligue_Camembert saison_021 div05 J14) : un CSC apparait dans
+    real_match[COTE OPPOSE a `own_side`]["goals"] (jamais le cote du buteur
+    lui-meme), avec scorerId = playerId du buteur -- exactement comme un but
+    normal marque "pour" le cote oppose, sauf que le scorerId appartient au
+    cote qui l'encaisse.
+
+    Filtre sur `scorerId == player_id` (retour utilisateur 2026-08-23,
+    correctif majeur -- l'ancienne version, _own_goal_events_for_side,
+    credit­ait le CSC a TOUT joueur fantasy dont le PROPRE club reel avait
+    beneficie de l'evenement QUELQUE PART dans le vrai match, sans jamais
+    verifier QUI l'avait marque : verifie faux sur Ligue_2_EKT D18 J3
+    QLRBXDCX2_21_18_3_1_2_3 -- Saidou Sow (buteur du CSC, ni chez user_402657
+    ni chez user_367647) faisait gagner un CSC aux DEUX cotes simplement
+    parce que Raphael Lipinski (home) ET Mathis Touho/Evan's Jean Lambert
+    (away) partagent tous les trois le club reel beneficiaire, sans qu'aucun
+    d'eux n'ait quoi que ce soit a voir avec le but lui-meme. Regle officielle
+    MPG (confirmee par l'utilisateur) : un CSC ne compte dans CE match fantasy
+    QUE si le BUTEUR est lui-meme aligne dans l'une des deux equipes qui
+    s'affrontent -- il penalise alors SA PROPRE equipe fantasy (beneficie a
+    l'adversaire), jamais une equipe tierce qui partagerait juste le meme
+    club reel beneficiaire. `own_side` : player_slot.get("side") du joueur
+    MPG concerne (son propre cote REEL, deja expose par get_division_matches)
+    -- None/absent -> []."""
+    if not own_side:
+        return []
+    opposite = "away" if own_side == "home" else "home"
+    return [
+        e for e in (real_match.get(opposite, {}).get("goals") or [])
+        if e.get("type") == "own" and e.get("scorerId") == player_id
     ]
 
 
@@ -250,6 +356,60 @@ def compute_player_live_score(player_slot: dict, real_match: dict | None, is_cap
     minutes = stats.get("minutes_played", 0)
     real_goals = stats.get("goals", 0)
     real_goal_times = _goal_times_for(real_match, player_slot["playerId"]) if real_match else []
+    match_finished = bool(real_match) and real_match.get("period") in FINISHED_MATCH_PERIODS
+    # "period" absent/None OU explicitement "preMatch" (cf.
+    # NOT_STARTED_MATCH_PERIODS, retour utilisateur 2026-08-23) tant que le
+    # vrai match n'a pas donne son coup d'envoi -- present (quelle que soit
+    # la valeur : firstHalf, halfTime... jusqu'a fullTime) des qu'il a
+    # demarre. Sert au Grotaldo provisoire (cf. docstring module, retour
+    # utilisateur 2026-08-16) : un titulaire a 0 minute ne compte comme
+    # "absent" que si SON PROPRE match a au moins commence, jamais avant
+    # (meme garde-fou que match_finished pour les scores delirants).
+    real_match_started = (
+        bool(real_match)
+        and real_match.get("period") is not None
+        and real_match.get("period") not in NOT_STARTED_MATCH_PERIODS
+    )
+    # Note PAR DEFAUT (retour utilisateur 2026-08-17, "Pour jouer le cote
+    # simulation a fond on va leur mettre une note de 5... meme comportement
+    # que pour les matchs reportes") : des que le VRAI match du joueur n'a pas
+    # encore demarre (real_match_started=False -- couvre aussi bien "pas
+    # encore commence aujourd'hui" qu'un vrai report, indistinguables cote
+    # get_championship_match, cf. Buonanotte/Toni Fernandez sur
+    # QLKEN7K41_22_7_1_1_0_4 -- les deux ont "period": None), note/minutes
+    # sont simules a 5/90 (cumulable avec bonus formation/capitaine/Zahia
+    # comme un titulaire normal). NE s'applique PAS une fois le match
+    # REELEMENT demarre (real_match_started=True) meme sans note/minutes
+    # encore confirmes -- ce cas reste "en attente" (0 minute peut encore
+    # devenir une vraie absence UNE FOIS le match termine, cf. match_finished
+    # plus bas -- l'ecraser avec une note fictive casserait le Grotaldo
+    # provisoire et la recherche du remplacant obligatoire, qui ont besoin de
+    # la VRAIE valeur de minutes_played une fois le match en cours/termine).
+    is_default_rating = False
+    if note is None and not real_match_started:
+        note = 5
+        minutes = 90
+        is_default_rating = True
+    # Date du coup d'envoi du VRAI match de ce joueur (ex. "2026-08-16T...")
+    # -- une journee MPG etale ses vrais matchs sur plusieurs jours (cf.
+    # docstring module), donc une simple minute ("55'") ne suffit pas a
+    # savoir DE QUEL JOUR elle parle (retour utilisateur 2026-08-16).
+    # Exposee pour l'affichage cote UI dans goal_events (cf. apply_line_battles),
+    # pas pour un calcul quelconque ici.
+    real_match_date = real_match.get("date") if real_match else None
+    # CSC reels marques PAR CE JOUEUR precis (cf. _own_goals_scored_by_player,
+    # correctif 2026-08-23 -- NE PAS confondre avec "mon cote a beneficie
+    # d'un CSC quelque part", l'ancien comportement fautif) -- compte contre
+    # SA PROPRE equipe fantasy, jamais celle d'un tiers qui partagerait juste
+    # le meme club reel. Deduplique au niveau equipe dans apply_line_battles
+    # (peu probable qu'un joueur en marque 2, mais garde la meme forme de
+    # liste par coherence). Enrichi de la date ici (le meme real_match_date
+    # que ci-dessus -- l'evenement brut MPG n'a qu'un timestamp epoch, pas une
+    # date lisible directement).
+    real_own_goal_scored_events = [
+        {**e, "date": real_match_date}
+        for e in _own_goals_scored_by_player(real_match, player_slot.get("side"), player_slot["playerId"])
+    ] if real_match else []
 
     position = player_slot.get("position")
     bonus_formation = formation_defender_bonus(position, composition)
@@ -261,8 +421,13 @@ def compute_player_live_score(player_slot: dict, real_match: dict | None, is_cap
         "position": position,
         "real_goals": real_goals,
         "real_goal_times": real_goal_times,
+        "real_match_date": real_match_date,
+        "real_own_goal_scored_events": real_own_goal_scored_events,
         "note": note,
+        "is_default_rating": is_default_rating,
         "minutes_played": minutes,
+        "match_finished": match_finished,
+        "real_match_started": real_match_started,
         "bonus_formation_defenseurs": bonus_formation,
         "bonus_capitaine": bonus_cap,
         "note_finale": note_finale,
@@ -273,12 +438,96 @@ def _is_played(player_computed: dict) -> bool:
     return (player_computed.get("minutes_played") or 0) > 0
 
 
-def resolve_starting_lineup(team: dict, real_matches_by_id: dict[str, dict], block_tactical: bool = False) -> dict:
+def _is_confirmed_played(player_computed: dict) -> bool:
+    """Comme _is_played, mais EXCLUT les notes par defaut (retour utilisateur
+    2026-08-17) -- reserve a la passe 2 (remplacement OBLIGATOIRE, recherche
+    sur le banc, cf. plus bas) : un candidat trouve par CETTE recherche doit
+    avoir REELLEMENT joue, une note par defaut (vrai match pas encore
+    demarre/reporte, cf. compute_player_live_score) ne prouve rien. PAS utilisee
+    pour la passe 1 (tactique, cf. plus bas -- la, une note par defaut suffit,
+    c'est un choix DEJA DESIGNE par le manager, pas une recherche de notre
+    cru) ni pour "ce titulaire compte-t-il comme aligne" (_is_played suffit
+    aussi, cf. les usages plus bas). Sans cette distinction, un remplacant
+    "obligatoire" sur le BANC dont le vrai match est LUI AUSSI pas encore
+    joue/reporte etait considere "a bien joue" (minutes=90 factices) et
+    entrait au jeu -- observe : plusieurs remplacants a note exactement
+    5/5.5 (la valeur par defaut) recevant meme un bonus Zahia, alors qu'ils
+    n'avaient en realite rien joue non plus."""
+    return _is_played(player_computed) and not player_computed.get("is_default_rating")
+
+
+def _note_with_simulated_bonuses(
+    note: float | None, position: int | None,
+    own_bonus: str | None, is_target: bool, incoming_bonus: str | None = None,
+) -> float | None:
+    """Note d'UN titulaire APRES tous les bonus de note simules -- SES PROPRES
+    coups (own_bonus/target_player_id) ET ceux SUBIS de l'adversaire
+    (incoming_bonus, retour utilisateur 2026-08-23 : "verifie que ce ne soit
+    pas le cas pour tous les bonus", suite du correctif McDo+/Zahia).
+    Purement informatif/pour comparaison, ne mute RIEN (l'application reelle
+    sur le XI final reste le role unique de apply_own_bonus_effect/
+    apply_incoming_bonus_effect, cf. leurs docstrings) -- les deux cumulables
+    (un manager peut simuler simultanement SON bonus et celui de l'adversaire,
+    cf. /api/live-scenario, home_choice ET opponent_choice).
+
+    - boostOnePlayer (McDo+, own) : +1, seulement sur `is_target`.
+    - boostAllPlayers (Zahia, own) : +0.5, tous les titulaires DECLARES --
+      meme ceux ensuite remplaces (seuls leurs REMPLACANTS en sont exclus,
+      cf. apply_own_bonus_effect) -- donc sans filtre `is_target` ici.
+    - nerfGoalkeeper (Suarez, incoming/adverse) : -1, SEULEMENT le gardien.
+    - nerfAllPlayers (Cheat Code, incoming/adverse) : -0.5, tous les joueurs
+      DE CHAMP (jamais le gardien).
+
+    blockTacticalSubs (Tonton Pat') n'affecte AUCUNE note (desactive toute la
+    passe 1, deja gere via le parametre block_tactical de
+    resolve_starting_lineup) et removeGoal (Valise) agit sur le SCORE, pas
+    une note de joueur (apply_removed_goal, apres le duel de lignes) -- ni
+    l'un ni l'autre ne concerne cette fonction. None si `note` est None (pas
+    encore de note du tout, distinct de la note par defaut 5)."""
+    if note is None:
+        return None
+    result = note
+    if own_bonus == "boostOnePlayer" and is_target:
+        result += 1
+    elif own_bonus == "boostAllPlayers":
+        result += 0.5
+    if incoming_bonus == "nerfGoalkeeper" and position == POSITION_GOALKEEPER:
+        result -= 1
+    elif incoming_bonus == "nerfAllPlayers" and position != POSITION_GOALKEEPER:
+        result -= 0.5
+    return round(result, 2)
+
+
+def resolve_starting_lineup(
+    team: dict, real_matches_by_id: dict[str, dict], block_tactical: bool = False,
+    own_bonus: str | None = None, target_player_id: str | None = None, incoming_bonus: str | None = None,
+) -> dict:
     """Resout les remplacements (tactiques puis obligatoires, cf. docstring
     module) pour les 11 titulaires de `team`. `block_tactical` : Tonton Pat'
     joue par l'ADVERSAIRE (ou renvoye par un Miroir, cf. docstring module) --
     saute la passe 1 (tactique) pour les slots pas deja resolus par MPG, la
-    passe 2 (obligatoire) reste active. Renvoie {players, rotaldo_count,
+    passe 2 (obligatoire) reste active. `own_bonus`/`target_player_id`/
+    `incoming_bonus` : bonus de note simules -- McDo+ (boostOnePlayer, cible
+    target_player_id) ou Zahia (boostAllPlayers, tous les titulaires
+    DECLARES) cotes SOI ; Suarez (nerfGoalkeeper, gardien seulement) ou Cheat
+    Code (nerfAllPlayers, joueurs de champ) SUBIS de l'adversaire (retour
+    utilisateur 2026-08-23, "verifie que ce ne soit pas le cas pour tous les
+    bonus") -- en vrai MPG, le seuil de remplacement tactique compare la note
+    APRES bonus (siens ET subis), pas avant, sinon la simulation "et si
+    j'avais mis/subi ce bonus" ne peut jamais changer un remplacement (verifie
+    McDo+/Zahia : note par defaut 5, seuil <6, +1/+0.5 doit pouvoir l'annuler
+    -- symetriquement, un nerfAllPlayers adverse doit pouvoir en DECLENCHER un
+    qui n'aurait pas eu lieu sinon). Cf. _note_with_simulated_bonuses. Cette
+    note boostee/nerfee n'est utilisee ICI que pour la comparaison de seuil de
+    la passe 1 ci-dessous -- elle n'est PAS appliquee en dur a
+    computed[...]["note_finale"] (qui reste la note nue) : l'application
+    definitive + le tag d'affichage sur le XI FINAL restent le role unique de
+    apply_own_bonus_effect/apply_incoming_bonus_effect (appeles par
+    compute_team_live_score), pour ne jamais compter un bonus deux fois.
+    blockTacticalSubs/removeGoal n'ont pas leur place ici (aucun effet de
+    note, cf. _note_with_simulated_bonuses) -- le premier est deja gere via
+    `block_tactical` ci-dessus, le second agit sur le score apres coup
+    (apply_removed_goal). Renvoie {players, rotaldo_count,
     csc_conceded, bench, out} -- `players` : {playerId_final: {...compute_player_live_score,
     "effective_note", "is_rotaldo", "sub_source", "poste_sautes",
     "replaced_starter"}}, cle par le joueur qui joue REELLEMENT le slot (peut
@@ -360,6 +609,34 @@ def resolve_starting_lineup(team: dict, real_matches_by_id: dict[str, dict], blo
     # bonne que prevu chez le remplacant, PAS son absence de jeu). Ignore les
     # slots deja resolus par MPG ci-dessus (resolution deja renseignee), et la
     # passe entiere si Tonton Pat' bloque (block_tactical, cf. docstring).
+    #
+    # IMPORTANT (retour utilisateur 2026-08-17) : ici, une note PAR DEFAUT
+    # suffit (_is_played, PAS _is_confirmed_played) -- contrairement a la
+    # passe 2 ci-dessous. Le remplacement tactique est un choix DEJA DESIGNE
+    # par le manager (team["tacticalSubs"], pas une recherche de notre cru) :
+    # une fois le seuil de note franchi, MPG le declenche avec la note qu'a
+    # le remplacant a cet instant, meme provisoire -- verifie exact sur
+    # Ligue_2_EKT/QLKEN7K41_22_7_1_1_0_4 : Jose Angel Carmona absent, son
+    # remplacant designe Denzel Dumfries (note par defaut 5, seuil 5.5)
+    # doit rentrer en PRIORITE sur la recherche "obligatoire" (qui trouvait
+    # a tort Omar El Hilali, un tout autre joueur, en ignorant le
+    # remplacement tactique deja designe).
+    #
+    # IMPORTANT (retour utilisateur 2026-08-17, "tu fais remplacer Facundo
+    # Buononotte qui n'a pas encore joue (mais le match n'est pas reporte)") :
+    # note_finale a None ne veut PAS dire que le titulaire n'a pas joue -- si
+    # SON PROPRE vrai match n'a pas encore demarre/pas encore fini, c'est juste
+    # "pas encore de donnees" (meme garde-fou que match_finished en passe 2 /
+    # docstring "IMPORTANT" plus haut). Sans ce garde-fou, un titulaire dont le
+    # match n'a meme pas commence declenchait le remplacement tactique des le
+    # premier poll, des qu'un remplacant designe avait deja une note (reelle ou
+    # par defaut) -- verifie sur Ligue_2_EKT/QLKEN7K41_22_7_1_1_0_4 : Buonanotte
+    # ("hasMatchPostponed": False, aucune note) remplace a tort par Toni
+    # Fernandez (son propre match, lui, genuinement reporte). On ne substitue
+    # que si (a) une note existe et est sous le seuil, ou (b) aucune note mais
+    # le vrai match du titulaire est TERMINE (absence confirmee) -- sinon on
+    # laisse la passe 2 le classer "en_attente" comme n'importe quel titulaire
+    # dont le sort n'est pas encore tranche.
     for starter_id in xi_ids:
         if starter_id in resolution or block_tactical:
             continue
@@ -373,9 +650,28 @@ def resolve_starting_lineup(team: dict, real_matches_by_id: dict[str, dict], blo
         if not _is_played(sub_player):
             continue
         note = starter["note_finale"]
-        if note is None or note < ts["rating"]:
-            used_ids.add(ts["subId"])
-            resolution[starter_id] = {"playerId": ts["subId"], "source": "tactique", "poste_sautes": 0}
+        # Bonus de note simules -- siens (McDo+/Zahia) ET subis de l'adversaire
+        # (Suarez/Cheat Code, cf. _note_with_simulated_bonuses et la docstring
+        # ci-dessus) : seule la comparaison au seuil en tient compte, jamais
+        # computed[...]["note_finale"] lui-meme. Gate sur is_default_rating
+        # (retour utilisateur 2026-08-23) : le choix de bonus est verrouille
+        # AVANT le coup d'envoi -- une fois le VRAI match de ce titulaire
+        # demarre/termine, sa note est reelle et confirmee, plus rien a
+        # "simuler" (le remplacement, s'il a eu lieu, s'est deja reellement
+        # produit). Le bonus ne peut donc influencer le seuil que tant que ce
+        # titulaire n'a pas encore reellement joue (note par defaut 5, cf.
+        # compute_player_live_score).
+        if starter.get("is_default_rating"):
+            boosted = _note_with_simulated_bonuses(
+                note, starter["position"], own_bonus, starter_id == target_player_id, incoming_bonus,
+            )
+            if boosted is not None:
+                note = boosted
+        should_sub = (note is not None and note < ts["rating"]) or (note is None and starter["match_finished"])
+        if not should_sub:
+            continue
+        used_ids.add(ts["subId"])
+        resolution[starter_id] = {"playerId": ts["subId"], "source": "tactique", "poste_sautes": 0}
 
     # Passe 2 : remplacement obligatoire -- seulement titulaires non couverts
     # par le tactique et n'ayant pas joue. Cascade poste identique -> poste(s)
@@ -390,6 +686,12 @@ def resolve_starting_lineup(team: dict, real_matches_by_id: dict[str, dict], blo
         if not starter:
             resolution[starter_id] = {"playerId": None, "source": "rotaldo", "poste_sautes": 0}
             continue
+        if not starter["match_finished"]:
+            # Vrai match pas encore termine (pas commence ou en cours) -- 0
+            # minute ne prouve pas une absence, cf. docstring "IMPORTANT"
+            # ci-dessus. On ne substitue pas, on ne Rotaldo pas : en attente.
+            resolution[starter_id] = {"playerId": starter_id, "source": "en_attente", "poste_sautes": 0}
+            continue
 
         position = starter["position"]
         candidate_positions = [position] if position == POSITION_GOALKEEPER else list(range(position, POSITION_DEFENDER - 1, -1))
@@ -399,7 +701,7 @@ def resolve_starting_lineup(team: dict, real_matches_by_id: dict[str, dict], blo
                 if bench_id in used_ids:
                     continue
                 cand = computed.get(bench_id)
-                if cand and cand["position"] == cand_position and _is_played(cand):
+                if cand and cand["position"] == cand_position and _is_confirmed_played(cand):
                     found = (bench_id, poste_sautes)
                     break
             if found:
@@ -428,11 +730,34 @@ def resolve_starting_lineup(team: dict, real_matches_by_id: dict[str, dict], blo
             }
             continue
 
+        if res["source"] == "en_attente":
+            # Vrai match pas termine, cf. passe 2 -- pas de note, pas de
+            # Rotaldo, exclu du total/duel de lignes tant que ca dure.
+            players_out[starter_id] = {
+                **computed[starter_id], "effective_note": None, "is_rotaldo": False,
+                "sub_source": "en_attente", "poste_sautes": 0, "replaced_starter": None,
+            }
+            continue
+
         final_id = res["playerId"]
         final_player = computed[final_id]
         penalty = float(res["poste_sautes"])
         is_rotaldo = final_player["note_finale"] is None
         effective_note = ROTALDO_NOTE if is_rotaldo else round(final_player["note_finale"] - penalty, 2)
+        # Bonus formation (X defenseurs) RETIRE pour un remplacant (tactique
+        # OU obligatoire, final_id != starter_id) -- retour utilisateur
+        # 2026-08-17 : "Denzel Dumfries arrive en remplacant tactique MAIS il
+        # beneficie du bonus (4 defenseurs) ce qui est impossible". Meme
+        # logique que Zahia (cf. apply_own_bonus_effect) et le capitaine (deja
+        # correct par construction, lie a un ID de joueur precis, jamais celui
+        # du remplacant) : un bonus "declaratif" tenant a la composition/au
+        # XI ANNONCE ne suit pas le remplacant sur le terrain, meme si celui-ci
+        # est lui-meme defenseur dans l'absolu -- il etait deja baked dans
+        # final_player["note_finale"] (cf. compute_player_live_score), donc on
+        # le retranche ici plutot que de re-derailler tout le calcul du seuil
+        # de remplacement tactique (base sur note_finale AVANT ce retrait).
+        if not is_rotaldo and final_id != starter_id:
+            effective_note = round(effective_note - final_player["bonus_formation_defenseurs"], 2)
         if is_rotaldo:
             rotaldo_count += 1
 
@@ -451,11 +776,40 @@ def resolve_starting_lineup(team: dict, real_matches_by_id: dict[str, dict], blo
         # 2026-08-10).
         if final_id != starter_id:
             starter_info = computed[starter_id]
+            is_target = starter_id == target_player_id
+            note_avec_bonus = _note_with_simulated_bonuses(
+                starter_info["note_finale"], starter_info["position"], own_bonus, is_target, incoming_bonus,
+            )
             starters_out.append({
                 "playerId": starter_id, "name": starter_info["name"], "position": starter_info["position"],
                 "note_finale": starter_info["note_finale"], "minutes_played": starter_info["minutes_played"],
                 "reason": res["source"],  # "tactique" ou "obligatoire"
                 "replaced_by": final_player["name"],
+                # True si CE titulaire est sorti sur une note PAR DEFAUT (son
+                # propre vrai match n'a pas encore demarre, cf.
+                # compute_player_live_score) -- distingue un remplacement
+                # encore PROVISOIRE (une simulation de bonus peut encore
+                # changer l'issue, cf. own_bonus ci-dessus) d'un remplacement
+                # REEL deja confirme (vrai match joue/termine -- rien a
+                # simuler, retour utilisateur 2026-08-23 : les managers ne
+                # doivent pas croire pouvoir booster un joueur qui a deja
+                # joue).
+                "is_default_rating": starter_info["is_default_rating"],
+                # Retour utilisateur 2026-08-23 (2e/3e passage, Zahia puis
+                # generalisation a tous les bonus de note) : le manager doit
+                # voir DEUX notes distinctes pour un titulaire sorti -- sa
+                # note AVEC le(s) bonus simule(s) (purement informatif, cf.
+                # _note_with_simulated_bonuses) et celle qui a REELLEMENT
+                # determine son remplacement (identique a note_avec_bonus
+                # seulement si is_default_rating -- cf. la passe 1 ci-dessus,
+                # gate sur is_default_rating -- sinon identique a note_finale,
+                # le bonus n'a jamais pu influencer une decision deja reelle).
+                "note_avec_bonus": note_avec_bonus,
+                "note_seuil": (
+                    note_avec_bonus if (res["source"] == "tactique" and starter_info["is_default_rating"]
+                                         and note_avec_bonus is not None)
+                    else starter_info["note_finale"]
+                ),
             })
 
     bench = []
@@ -463,9 +817,20 @@ def resolve_starting_lineup(team: dict, real_matches_by_id: dict[str, dict], blo
         info = computed.get(pid)
         if not info:
             continue
+        # Bonus formation (X defenseurs) RETIRE ici aussi (meme raison que
+        # dans players_out ci-dessus, cf. commit Dumfries) : bonus_formation_
+        # defenseurs est calcule pour TOUT joueur des sa propre position,
+        # meme sur le banc -- un remplacant qui n'est meme pas ENTRE ne
+        # devrait a fortiori pas en beneficier a l'affichage (retour
+        # utilisateur 2026-08-17, Aymeric Laporte affiche a 5.5 sur le banc :
+        # 5 par defaut, note propre + 0.5 de formation qu'il n'a jamais
+        # gagne, jamais entre sur le terrain).
+        bench_note = info["note_finale"]
+        if bench_note is not None:
+            bench_note = round(bench_note - info["bonus_formation_defenseurs"], 2)
         bench.append({
             "playerId": pid, "name": info["name"], "position": info["position"],
-            "note_finale": info["note_finale"], "minutes_played": info["minutes_played"],
+            "note_finale": bench_note, "minutes_played": info["minutes_played"],
             "entered": pid in players_out,
         })
 
@@ -497,6 +862,16 @@ BONUS_MIN_DIVISION_SIZE = {
     "nerfGoalkeeper": 6,      # Suarez
     "boostAllPlayers": 6,     # Zahia
     "mirror": 6,              # Miroir
+    "fourStrikers": 6,        # 424 -- retour utilisateur 2026-08-18 (audit
+                               # collaborateur, B6) : MPG en a 8, cette table
+                               # en oubliait un. Disponibilite seulement --
+                               # PAS dans VALID_BONUSES, deja gere ailleurs
+                               # (core/scoring.py::BONUS_LABELS,
+                               # core/bonus_impact.py) sans effet de note
+                               # simule ici (aucune preuve qu'il en ait un,
+                               # contrairement aux 7 "coups" ci-dessus --
+                               # a confirmer avant de l'ajouter a
+                               # apply_own_bonus_effect/VALID_BONUSES).
     "nerfAllPlayers": 8,      # Cheat Code 18-26
     "blockTacticalSubs": 8,   # Tonton Pat'
 }
@@ -597,9 +972,18 @@ def apply_own_bonus_effect(players: dict[str, dict], bonus: str | None, target_p
     voir sur SA note individuelle (et donc sur la ligne DF/MF/FW dont il fait
     partie pour le duel de lignes), pas comme un delta abstrait sur le total
     de l'equipe (retour utilisateur 2026-08-09 : "le cumul de points MPG n'a
-    pas vraiment de sens")."""
+    pas vraiment de sens").
+
+    boostAllPlayers (Zahia) EXCLUT les remplacants (p["replaced_starter"] non
+    None, cf. resolve_starting_lineup -- tactique ou obligatoire) : retour
+    utilisateur 2026-08-17, "Une zahia s'applique uniquement aux titulaires...
+    C'est impossible [de la voir sur un remplacant]", observe a tort sur Toni
+    Fernandez (remplacant obligatoire/par defaut de Facundo Buonanotte,
+    Ligue_2_EKT/QLKEN7K41_22_7_1_1_0_4)."""
     if bonus == "boostAllPlayers":
         for p in players.values():
+            if p.get("replaced_starter"):
+                continue
             if p["effective_note"] is not None:
                 p["effective_note"] = round(p["effective_note"] + 0.5, 2)
                 p["bonus_tag"] = "boostAllPlayers"
@@ -635,18 +1019,29 @@ def compute_team_live_score(
     recuperees par l'appelant (mutualisees entre les 2 equipes du match / le
     reste de la division -- plusieurs joueurs partagent le meme matchId reel).
     Resout d'abord les remplacements (resolve_starting_lineup, avec
-    block_tactical si Tonton Pat' cible cette equipe), puis applique les coups
-    de note declares (own_bonus = {"bonus", "targetPlayerId"} de CETTE equipe,
-    incoming_bonus = cle du coup joue par l'ADVERSAIRE, cf. docstring module)
-    -- "total" est la somme des effective_note APRES coups, PRE duel de
-    lignes. removeGoal (Valise) n'est PAS applique ici -- il agit sur les buts,
-    determines seulement apres apply_line_battles, cf. compute_division_live_scores."""
-    lineup = resolve_starting_lineup(team, real_matches_by_id, block_tactical=block_tactical)
+    block_tactical si Tonton Pat' cible cette equipe -- own_bonus/targetPlayerId
+    ET incoming_bonus lui sont aussi transmis : tout bonus de note simule
+    (McDo+/Zahia siens, Suarez/Cheat Code subis) doit pouvoir influencer la
+    decision de remplacement tactique elle-meme, cf. sa docstring, retour
+    utilisateur 2026-08-23), puis applique les coups de note declares
+    (own_bonus = {"bonus", "targetPlayerId"} de CETTE equipe, incoming_bonus =
+    cle du coup joue par l'ADVERSAIRE, cf. docstring module) -- "total" est la
+    somme des effective_note APRES coups, PRE duel de lignes. removeGoal
+    (Valise) n'est PAS applique ici -- il agit sur les buts, determines
+    seulement apres apply_line_battles, cf. compute_division_live_scores."""
+    lineup = resolve_starting_lineup(
+        team, real_matches_by_id, block_tactical=block_tactical,
+        own_bonus=(own_bonus or {}).get("bonus"), target_player_id=(own_bonus or {}).get("targetPlayerId"),
+        incoming_bonus=incoming_bonus,
+    )
     if own_bonus:
         apply_own_bonus_effect(lineup["players"], own_bonus.get("bonus"), own_bonus.get("targetPlayerId"))
     if incoming_bonus:
         apply_incoming_bonus_effect(lineup["players"], incoming_bonus)
-    total = sum(p["effective_note"] for p in lineup["players"].values())
+    # "en_attente" (vrai match pas termine) laisse effective_note=None -- exclu
+    # du total, qui reste donc PROVISOIRE (augmente au fil des vrais matchs
+    # de la journee qui se terminent, cf. docstring module).
+    total = sum(p["effective_note"] for p in lineup["players"].values() if p["effective_note"] is not None)
 
     return {
         "total": round(total, 2), "players": lineup["players"], "bench": lineup["bench"], "out": lineup["out"],
@@ -667,7 +1062,16 @@ def _resolve_line_battle(note_finale: float, position: int, opponent_lines: dict
     """Fait avancer UN joueur (note deja bonus compris) le long de sa sequence
     de lignes adverses (LINE_SEQUENCE_BY_POSITION), s'arrete a la premiere
     ligne non franchie. `opponent_lines` : {position -> moyenne}, fige avant
-    tout duel (cf. docstring module)."""
+    tout duel (cf. docstring module).
+
+    Regle officielle MPG R1 (retour utilisateur 2026-08-18, audit
+    collaborateur, confirme avec Ilan) : il faut au moins 5/10 pour marquer
+    un but MPG -- la note EFFECTIVE dans le XI final, bonus compris (donc
+    `note_finale`/`effective_note` tel que recu ICI, AVANT toute penalite de
+    duel -- pas note_apres_duel une fois les lignes franchies grignotees).
+    Un defenseur a 4 qui passe a 5 grace a une defense a cinq peut donc
+    marquer. Absent avant ce correctif -- verifie : un attaquant a 4,5 face
+    a une defense de Rotaldos se voyait a tort accorder un but MPG."""
     sequence = LINE_SEQUENCE_BY_POSITION.get(position, [])
     current_note = note_finale
     lines_passed: list[int] = []
@@ -695,7 +1099,7 @@ def _resolve_line_battle(note_finale: float, position: int, opponent_lines: dict
     # ci-dessus) meme s'il a deja marque en reel -- seul le COMPTAGE du but MPG
     # est retire, pas le fait d'avoir gagne son duel (donc pas d'ajout a la note).
     reached_keeper = lines_passed and lines_passed[-1] == POSITION_GOALKEEPER
-    goal_scored = reached_keeper and real_goals == 0
+    goal_scored = reached_keeper and real_goals == 0 and note_finale >= 5
 
     return {
         "lines_passed": lines_passed,
@@ -714,9 +1118,23 @@ def apply_line_battles(match: dict) -> dict:
     compute_team_live_score (somme des effective_note, note reelle
     post-remplacement mais PRE duel -- sinon les deux mecanismes se melangent,
     cf. retour utilisateur 2026-08-08). Ajoute aussi team["buts_mpg"]/
-    ["real_goals"]/["score"] (real_goals + buts_mpg + CSC Rotaldo concedes par
-    l'adverse), team["goal_events"] (liste {name, type: "real"|"mpg"|"csc",
-    time} triable pour un affichage type feuille de match) et
+    ["real_goals"]/["score"] (real_goals PERSONNELS + CSC reels beneficiant a
+    cette equipe + buts_mpg + CSC Rotaldo concedes par l'adverse),
+    team["goal_events"] (liste {name, type: "real"|"mpg"|"csc"|"real_og", time,
+    date} triable pour un affichage type feuille de match -- "real_og" = CSC
+    reel marque PAR UN JOUEUR ALIGNE DANS LE XI FINAL DE L'EQUIPE ADVERSE de
+    CE match fantasy (jamais un joueur tiers qui partagerait juste le meme
+    club reel beneficiaire, cf. _own_goals_scored_by_player, correctif majeur
+    2026-08-23 -- retour utilisateur : "le CSC ne peut etre compte que si le
+    joueur l'ayant marque est un joueur de l'effectif... sous condition qu'il
+    soit entre en jeu dans le match qui nous oppose"). "date" (ISO,
+    ex. "2026-08-16T19:00:00.000Z") : uniquement pour "real"/"real_og"
+    (evenements rattaches a un vrai match precis) -- None pour "mpg"/"csc"
+    (pas de vrai match unique associe). Une
+    journee MPG etale ses vrais matchs sur plusieurs jours, la seule minute
+    ("55'") ne suffit pas a savoir de quel jour elle parle (retour
+    utilisateur 2026-08-16) -- a afficher cote UI (JJ/MM) des que plusieurs
+    dates distinctes apparaissent dans la meme feuille de match.) et
     team["line_averages"] (moyennes DF/MF/FW de SA PROPRE equipe -- cle =
     POSITION_DEFENDER/MIDFIELDER/FORWARD, deja calculees pour le duel de
     lignes, exposees ici pour l'affichage cote UI, cf. retour utilisateur
@@ -727,7 +1145,10 @@ def apply_line_battles(match: dict) -> dict:
     match["home"]["line_averages"] = {pos: home_lines[pos] for pos in (POSITION_DEFENDER, POSITION_MIDFIELDER, POSITION_FORWARD)}
     match["away"]["line_averages"] = {pos: away_lines[pos] for pos in (POSITION_DEFENDER, POSITION_MIDFIELDER, POSITION_FORWARD)}
 
-    for team, opponent_lines, is_home in ((match["home"], away_lines, True), (match["away"], home_lines, False)):
+    for team, opponent, opponent_lines, is_home in (
+        (match["home"], match["away"], away_lines, True),
+        (match["away"], match["home"], home_lines, False),
+    ):
         buts_mpg = 0
         goal_events: list[dict] = []
         for p in team["players"].values():
@@ -741,20 +1162,75 @@ def apply_line_battles(match: dict) -> dict:
                 buts_mpg += 1
                 goal_events.append({"name": p["name"], "type": "mpg", "time": None})
             for t in p.get("real_goal_times", []):
-                goal_events.append({"name": p["name"], "type": "real", "time": t})
+                goal_events.append({"name": p["name"], "type": "real", "time": t, "date": p.get("real_match_date")})
+        # CSC reels marques PAR un joueur de l'equipe ADVERSE dans CE match
+        # fantasy (retour utilisateur 2026-08-23, correctif majeur -- cf.
+        # _own_goals_scored_by_player) : beneficient a CETTE equipe. Scanne
+        # opponent["players"] (le XI FINAL resolu de l'adversaire), pas le
+        # sien -- un CSC penalise l'equipe fantasy DU BUTEUR, jamais celle qui
+        # se contente de partager le meme club reel beneficiaire. Deduplique
+        # par eventId (robustesse, meme si un seul joueur peut normalement en
+        # marquer un). LIMITE CONNUE (assumee) : si le buteur etait un
+        # titulaire D'ORIGINE deja sorti (remplacement tactique/obligatoire,
+        # cf. team["out"]) avant l'evenement, il n'est plus une cle de
+        # opponent["players"] -- son CSC n'est alors PAS credite/decompte ici
+        # (out[] ne porte pas real_own_goal_scored_events). Cas non rencontre
+        # dans le signalement d'origine (le buteur n'etait dans AUCUNE des
+        # deux equipes) -- a traiter si un cas reel l'exige.
+        own_goal_events_seen: dict[str, dict] = {}
+        for p in opponent["players"].values():
+            for ev in p.get("real_own_goal_scored_events", []):
+                eid = ev.get("eventId")
+                if eid and eid not in own_goal_events_seen:
+                    own_goal_events_seen[eid] = ev
+        for ev in own_goal_events_seen.values():
+            goal_events.append({"name": "CSC", "type": "real_og", "time": ev.get("time"), "date": ev.get("date")})
         team["buts_mpg"] = buts_mpg
-        team["real_goals"] = sum(p.get("real_goals", 0) for p in team["players"].values())
+        team["real_goals"] = sum(p.get("real_goals", 0) for p in team["players"].values()) + len(own_goal_events_seen)
         team["score"] = team["real_goals"] + buts_mpg
         team["goal_events"] = goal_events
+
+    # Regle officielle MPG R2 "Arret MPG" (retour utilisateur 2026-08-18,
+    # audit collaborateur, confirme avec Ilan) : un gardien a 8/10 ou plus
+    # (note EFFECTIVE, bonus compris -- meme lecture que le seuil de 5/10
+    # pour marquer, cf. _resolve_line_battle, par symetrie) annule
+    # automatiquement UN but adverse (reel ou MPG), JAMAIS un CSC -- deja
+    # garanti par apply_removed_goal (n'agit que sur real_goal_times/
+    # but_mpg_bonus, jamais sur les entrees "csc"/"real_og" de goal_events).
+    # Regle STRUCTURELLE (jamais un "coup" declare par un manager) --
+    # appliquee ici dans le calcul OFFICIEL, contrairement aux 7 "coups" de
+    # apply_own_bonus_effect/apply_incoming_bonus_effect (cf. docstring
+    # module "Coups"), jamais conditionnee a bonus_choices. Doit tourner
+    # APRES la boucle ci-dessus (les buts doivent deja etre determines) et
+    # AVANT le CSC Rotaldo (qui, de toute facon, ne peut pas etre annule par
+    # construction -- ordre choisi pour la lisibilite, pas par necessite).
+    for team, opponent in ((match["home"], match["away"]), (match["away"], match["home"])):
+        goalkeeper = next((p for p in team["players"].values() if p["position"] == POSITION_GOALKEEPER), None)
+        if goalkeeper and goalkeeper.get("effective_note") is not None and goalkeeper["effective_note"] >= 8:
+            apply_removed_goal(opponent)
 
     # CSC Rotaldo : chaque equipe encaisse un but pour l'adverse tous les 3
     # Rotaldo dans son XI final (cf. docstring module) -- ajoute APRES coup,
     # une fois les deux team["score"] etablis, pour ne pas s'auto-influencer.
+    #
+    # Retour utilisateur 2026-08-17 (a la suite d'un CSC Grotaldo "provisoire"
+    # incoherent avec seulement 2 Rotaldo visibles a l'ecran) : "Seuls les
+    # joueurs sur le terrain comptent comme un grotaldo... elle imagine un
+    # scenario final a un instant T. Si dans le scenario actuel il n'y a que
+    # 2 Rotaldo sur le terrain alors pas de CSC Grotaldo" -- rotaldo_count
+    # EST deja ce scenario a l'instant T (resolution passe 1 tactique + passe
+    # 2 obligatoire sur les donnees actuelles), donc deja "provisoire" par
+    # nature (augmente au fil des vrais matchs qui se terminent). Un ANCIEN
+    # mecanisme separe (grotaldo_absent_count) anticipait un +1 supplementaire
+    # des que 3 titulaires D'ORIGINE etaient a 0 minute, MEME quand un
+    # remplacant tactique/obligatoire valide avait deja couvert l'un d'eux
+    # (donc bel et bien un joueur SUR LE TERRAIN a ce poste) -- supprime :
+    # rotaldo_count est la seule source de verite desormais.
     for team, opponent in ((match["home"], match["away"]), (match["away"], match["home"])):
-        csc = opponent.get("csc_conceded", 0)
-        if csc:
-            team["score"] += csc
-            team["goal_events"].append({"name": "CSC (Rotaldo)", "type": "csc", "time": None, "count": csc})
+        confirmed_csc = opponent.get("csc_conceded", 0)
+        if confirmed_csc:
+            team["score"] += confirmed_csc
+            team["goal_events"].append({"name": "CSC (Rotaldo)", "type": "csc", "time": None, "count": confirmed_csc})
 
     return match
 
@@ -926,6 +1402,41 @@ def compute_division_live_scores(
     return results
 
 
+def all_real_matches_finished(real_matches_by_id: dict[str, dict]) -> bool:
+    """True si TOUS les vrais matchs fournis (typiquement toute une journee
+    de division/ligue, cf. collect_real_match_ids) sont au statut TERMINE
+    (FINISHED_MATCH_PERIODS) -- False sur dict vide (rien a affirmer). Signal
+    utilise par live_watch.py pour figer l'instantane "avant" du plan
+    avant/apres (retour utilisateur 2026-08-17, comparaison prediction live vs
+    notes MPG definitives -- celles-ci continuent de bouger jusqu'a ~7h apres
+    la rencontre, cf. live_scheduler.py APRES_DELAY_HOURS)."""
+    return bool(real_matches_by_id) and all(
+        m.get("period") in FINISHED_MATCH_PERIODS for m in real_matches_by_id.values()
+    )
+
+
+def is_division_match_final(match: dict) -> bool:
+    """True si CE match de DIVISION (get_division_matches, pas un vrai match
+    reel) est completement stabilise cote MPG -- rating/bonusesDetails/badges
+    surs a lire (cf. docstring get_division_matches, core/api.py). status==2
+    ET finalResult=True observes ensemble sur tous les matchs verifies a ce
+    jour (2026-08-18, saisons passees) -- les deux verifies par securite."""
+    return match.get("status") == 2 and bool(match.get("finalResult"))
+
+
+def all_division_matches_final(division_matches: list[dict]) -> bool:
+    """True si TOUS les matchs d'une division/journee sont finalises (cf.
+    is_division_match_final) -- signal a utiliser pour declencher la capture
+    "en dur" (archive permanente, retour utilisateur 2026-08-18 : "un appel
+    unique qui nous donnera tout ce dont on a besoin pour le live comme pour
+    le classement en dur") -- plus fiable qu'un minuteur, contrairement a
+    all_real_matches_finished (base sur le VRAI match, utilise pour
+    l'instantane "avant" provisoire du plan avant/apres -- celui-ci reste
+    utile pour savoir QUAND repoller en attendant que MPG finalise, cf.
+    live_scheduler.py)."""
+    return bool(division_matches) and all(is_division_match_final(m) for m in division_matches)
+
+
 def collect_real_match_ids(division_matches: list[dict]) -> set[str]:
     """Union des matchId reels utilises par TOUS les joueurs d'une equipe (XI
     ET banc -- les remplacants ont besoin de leur propre match reel pour
@@ -942,3 +1453,5 @@ def collect_real_match_ids(division_matches: list[dict]) -> set[str]:
                 if match_id:
                     match_ids.add(match_id)
     return match_ids
+
+
