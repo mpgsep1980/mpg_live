@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MPG Live -- Trophées</title>
+<link rel="stylesheet" href="mpg-tokens.css">
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; max-width: 1100px; margin: 2rem auto; padding: 0 1rem; color: var(--mpg-title); }
+  h1 { font-size: 1.4rem; margin: 0 0 0.25rem; }
+  .meta { color: var(--mpg-text-soft); font-size: 0.85rem; margin: 0 0 1.5rem; }
+
+  .trophy-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+  .mpg-trophy-card { padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+  .trophy-card-subtitle { font-size: 0.75rem; }
+  .trophy-rows { max-height: 280px; overflow-y: auto; margin-top: 0.25rem; }
+  .trophy-row { display: grid; grid-template-columns: 1.5rem 1fr auto auto; gap: 0.5rem; padding: 0.2rem 0; font-size: 0.85rem; align-items: center; }
+  .trophy-row .rank { opacity: 0.7; font-variant-numeric: tabular-nums; }
+  .trophy-row .value { font-variant-numeric: tabular-nums; opacity: 0.85; min-width: 2em; text-align: right; }
+  .trophy-row .pts { font-weight: 700; min-width: 3em; text-align: right; }
+
+  .status-msg { color: var(--mpg-text-soft); font-size: 0.9rem; margin: 1rem 0; }
+  .status-msg.err { color: var(--mpg-danger); }
+</style>
+</head>
+<body>
+
+<header class="mpg-banner mpg-no-print">
+  <div class="mpg-banner-inner">
+    <a class="mpg-banner-title" href="index.html">MPG Live</a>
+    <nav class="mpg-banner-nav">
+      <a class="mpg-banner-item" href="index.html">Accueil</a>
+      <a class="mpg-banner-item" href="super-classement.html">Super classement</a>
+      <a class="mpg-banner-item" href="ligues.html">Ligues</a>
+      <a class="mpg-banner-item" href="division.html">Divisions</a>
+      <a class="mpg-banner-item" href="trophees.html">Trophées</a>
+    </nav>
+  </div>
+</header>
+<script>
+  for (const a of document.querySelectorAll(".mpg-banner-item")) {
+    if (a.pathname === location.pathname) a.classList.add("is-active");
+  }
+</script>
+
+<h1>Trophées</h1>
+<div class="meta">Classements parallèles cumulés sur la saison, hors Ligue des Champignons</div>
+
+<div id="status" class="status-msg"></div>
+<div class="trophy-grid" id="grid"></div>
+
+<script type="module">
+  import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+  const SUPABASE_URL = "https://zvmngpoogwjiknqrkjky.supabase.co";
+  const SUPABASE_ANON_KEY = "sb_publishable_YhAD0_spZJF58Dt_TTQplQ_VrFSKRK8";
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // Meme convention que super-classement.html/index.html (pas de detection
+  // automatique de "la" saison en cours).
+  const SEASON = 2026;
+
+  // Port verbatim de core/general_bonus.py::DEFAULT_GENERAL_BONUS_CATEGORIES
+  // (retour utilisateur 2026-08-24, "Trophees se trouve dans
+  // Super_Classement_General_V2.ipynb") -- memes 16 categories, memes
+  // cles/points/direction, "tone" ajoute ici pour le rendu (les 16 tons de
+  // mpg-tokens.css existent precisement pour ces 16 categories -- seuls
+  // Rideau de Fer/En feu/King Grotaldo confirmes contre le rendu DOM
+  // d'Ilan, le reste est un choix raisonnable a ajuster si besoin une fois
+  // compare visuellement).
+  const CATEGORIES = [
+    { name: "Sulfateuse", key: "score+", direction: "max", points: 10, requirePositive: false, tone: "grass" },
+    { name: "Rideau de Fer", key: "score-", direction: "min", points: 10, requirePositive: false, tone: "steel" },
+    { name: "Winner", key: "victory", direction: "max", points: 0, requirePositive: false, tone: "teal" },
+    { name: "La Piñata", key: "PinataScore", direction: "max", points: 10, requirePositive: true, tone: "gold" },
+    { name: "En feu", key: "on_fire", direction: "max", points: 10, requirePositive: false, tone: "fire" },
+    { name: "Gollum", key: "Precious_Count", direction: "max", points: 10, requirePositive: false, tone: "amber" },
+    { name: "Pétard Mouillé", key: "score+", direction: "min", points: 0, requirePositive: true, tone: "faded" },
+    { name: "Passoire", key: "score-", direction: "max", points: 0, requirePositive: false, tone: "brown" },
+    { name: "L'Araignée", key: "cleanSheet", direction: "max", points: 10, requirePositive: false, tone: "violet" },
+    { name: "High Five", key: "manita", direction: "max", points: 10, requirePositive: false, tone: "success" },
+    { name: "FFL", key: "defeat", direction: "max", points: 0, requirePositive: false, tone: "bronze" },
+    { name: "Macroniste", key: "draw", direction: "max", points: 0, requirePositive: false, tone: "indigo" },
+    { name: "King Grotaldo", key: "grotaldo", direction: "max", points: -10, requirePositive: true, tone: "danger" },
+    { name: "Harry Maguire Challenge", key: "owngoals", direction: "max", points: 0, requirePositive: false, tone: "pink" },
+    { name: "Poulidor", key: "Bonus_Second", direction: "max", points: 5, requirePositive: false, tone: "silver" },
+    { name: "La Chèvre", key: "Bonus_Dernier", direction: "max", points: 0, requirePositive: false, tone: "neutral" },
+  ];
+
+  function fmt(n) {
+    if (n === null || n === undefined) return "–";
+    return Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\.0$/, "");
+  }
+
+  // Meme logique qu'apply_general_bonuses (core/general_bonus.py) : seule la
+  // valeur EXTREME (max ou min selon la categorie) touche les points,
+  // require_positive bloque tout le monde si l'extreme n'est pas > 0 -- mais
+  // le classement BRUT (rang/valeur) reste affiche pour tous, contrairement
+  // a bonus_details qui ne retient que 0/points.
+  function rankCategory(cat, rows) {
+    const sorted = [...rows].sort((a, b) => cat.direction === "min" ? a.value - b.value : b.value - a.value);
+    const extreme = sorted.length ? sorted[0].value : null;
+    const winnerEligible = !(cat.requirePositive && (extreme == null || extreme <= 0));
+    let rank = 0, lastValue = null;
+    return sorted.map((r, i) => {
+      if (lastValue === null || r.value !== lastValue) rank = i + 1;
+      lastValue = r.value;
+      return { ...r, rank, isWinner: winnerEligible && r.value === extreme };
+    });
+  }
+
+  function trophyRowHtml(row) {
+    return `
+      <div class="trophy-row">
+        <span class="rank">${row.rank}</span>
+        <span>${row.displayName}</span>
+        <span class="value">${fmt(row.value)}</span>
+        <span class="pts">${row.isWinner ? fmt(row.cat.points) : "—"}</span>
+      </div>`;
+  }
+
+  function trophyCardHtml(cat, rows) {
+    const ranked = rankCategory(cat, rows).map(r => ({ ...r, cat }));
+    return `
+      <div class="mpg-trophy-card mpg-card-${cat.tone}">
+        <span class="mpg-tag mpg-tag-${cat.tone}" style="align-self:flex-start">${cat.name}</span>
+        <div class="mpg-muted trophy-card-subtitle">${cat.points !== 0 ? "Classement rémunéré" : "Classement informatif"}</div>
+        <div class="trophy-rows">${ranked.map(trophyRowHtml).join("")}</div>
+      </div>`;
+  }
+
+  async function load() {
+    const statusEl = document.getElementById("status");
+    const gridEl = document.getElementById("grid");
+
+    const [{ data: superData, error }, { data: managersData }] = await Promise.all([
+      supabase.from("super_classement").select("user_id, bonus_details, raw_stats").eq("season", SEASON),
+      supabase.from("managers").select("user_id, real_name"),
+    ]);
+
+    if (error) {
+      statusEl.textContent = "Erreur : " + error.message;
+      statusEl.className = "status-msg err";
+      return;
+    }
+    if (!superData || !superData.length) {
+      statusEl.textContent = "Aucun Super Classement pour cette saison (pas encore calculé).";
+      return;
+    }
+
+    const realNameByUid = Object.fromEntries((managersData || []).map(m => [m.user_id, m.real_name]));
+    statusEl.textContent = "";
+
+    gridEl.innerHTML = CATEGORIES.map(cat => {
+      const rows = superData
+        .filter(r => r.raw_stats && r.raw_stats[cat.key] !== undefined)
+        .map(r => ({
+          userId: r.user_id,
+          displayName: realNameByUid[r.user_id] || (r.bonus_details && r.bonus_details.teamName) || r.user_id,
+          value: r.raw_stats[cat.key] || 0,
+        }));
+      return trophyCardHtml(cat, rows);
+    }).join("");
+  }
+
+  load();
+</script>
+
+</body>
+</html>

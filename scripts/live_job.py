@@ -298,7 +298,7 @@ def main() -> None:
             bonus_details["teamName"] = row.get("teamName", "")
             sb.table("super_classement").upsert({
                 "season": season, "user_id": row["userId"], "points": row["points"],
-                "bonus_details": bonus_details, "updated_at": now_iso,
+                "bonus_details": bonus_details, "raw_stats": row.get("raw_stats") or {}, "updated_at": now_iso,
             }).execute()
         print(f"  Super Classement : {len(ranked)} manager(s) ecrits pour la saison {season}.")
     except Exception as e:

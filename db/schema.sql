@@ -158,6 +158,14 @@ create table super_classement (
     user_id        text not null,
     points         numeric not null default 0,
     bonus_details  jsonb not null default '{}'::jsonb,
+    -- Valeur BRUTE de chaque categorie de bonus general (score+, score-,
+    -- victory, draw, defeat, cleanSheet, manita, on_fire, grotaldo,
+    -- owngoals, Bonus_Second, Bonus_Dernier, Precious_Count, PinataScore,
+    -- *_DTC) AVANT qu'apply_general_bonuses ne les reduise a 0/points --
+    -- retour utilisateur 2026-08-24, "Trophees se trouve dans
+    -- Super_Classement_General_V2.ipynb" : ce classement affiche TOUS les
+    -- managers par categorie, pas seulement le(s) gagnant(s).
+    raw_stats      jsonb not null default '{}'::jsonb,
     updated_at     timestamptz not null default now(),
     primary key (season, user_id)
 );

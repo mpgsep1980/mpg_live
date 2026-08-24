@@ -564,6 +564,16 @@ def compute_super_classement(sb) -> list[dict]:
     for stats in stats_by_user.values():
         stats["PinataScore"] = compute_pinata_score(stats)
 
+    # Instantane des valeurs BRUTES (avant qu'apply_general_bonuses ne les
+    # transforme en points/bonus_details) -- retour utilisateur 2026-08-24,
+    # "Trophees se trouve dans Super_Classement_General_V2.ipynb" : cet
+    # onglet affiche le classement COMPLET par categorie (pas juste le
+    # gagnant), il faut donc garder la valeur brute de chacun, pas
+    # seulement bonus_details qui ne retient que 0/points du gagnant.
+    RAW_STAT_KEYS = (*SUM_FIELDS, "PinataScore")
+    for stats in stats_by_user.values():
+        stats["raw_stats"] = {key: stats.get(key, 0) for key in RAW_STAT_KEYS}
+
     classement = list(stats_by_user.items())  # [(userId, stats), ...] -- format attendu par apply_general_bonuses
     apply_general_bonuses(classement)
 
@@ -622,6 +632,7 @@ def compute_super_classement(sb) -> list[dict]:
         {
             "userId": uid, "teamName": best_team_name.get(uid, (0, ""))[1],
             "points": round(stats["points"], 1), "bonus_details": stats["bonus_details"], "rang": i,
+            "raw_stats": stats["raw_stats"],
         }
         for i, (uid, stats) in enumerate(ranked, start=1)
     ]
