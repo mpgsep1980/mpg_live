@@ -263,6 +263,27 @@ def main() -> None:
             game_week = next_gw["gameWeekNumber"]
 
             if not (window_start <= now <= window_end):
+                # Rattrapage : une ligue qui a RATE TOUTE la fenetre live de la
+                # journee precedente (cron en panne, ligue ajoutee en retard --
+                # meme incident deja documente dans scripts/backfill_gameweek.py,
+                # 2026-08-23 sur Ligue_2_EKT) n'a jamais de ligne dans
+                # gameweek_state pour cette journee -- la branche d'archivage
+                # normale (ligne 222 ci-dessus, gatee sur prev_state_res.data)
+                # ne se declenche donc JAMAIS pour elle, meme une fois MPG
+                # stabilise. Tente ici l'archivage direct de J(game_week-1),
+                # idempotent (archive_closed_gameweek_if_needed se sait deja
+                # sans effet si deja fait ou si MPG n'a pas encore stabilise) --
+                # retour utilisateur 2026-08-24, decouvert sur Lega_Calzone/
+                # Rosbeef_League (jamais aucune ligne dans division_classement_
+                # live malgre une journee 1 en principe terminee).
+                if not has_live_row and game_week > 1:
+                    total_divisions = get_live_total_divisions(short_id)
+                    archived = archive_closed_gameweek_if_needed(sb, league, game_week - 1, total_divisions)
+                    if archived == total_divisions:
+                        refresh_league_from_archive(sb, league, total_divisions)
+                        print(f"  {name} : rattrapage J{game_week - 1} archivee ({archived}/{total_divisions}).")
+                    elif archived:
+                        print(f"  {name} : rattrapage J{game_week - 1} partiel ({archived}/{total_divisions}), reessai au prochain tick.")
                 print(f"  {name} : hors fenetre J{game_week} "
                       f"({window_start:%d/%m %H:%M} -> {window_end:%d/%m %H:%M} UTC).")
                 continue
