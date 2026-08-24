@@ -136,6 +136,15 @@ create table division_classement_live (
     game_week    integer not null,
     data         jsonb not null,
     is_live      boolean not null default false,
+    -- {"done": int, "total": int} -- vrais matchs de foot termines sur le
+    -- total de cette journee/division (retour utilisateur 2026-08-24,
+    -- "matchs reels" vu sur monpropregazon.lovable.app/accueil). Calcule
+    -- quasi gratuitement dans scripts/live_job.py::poll_league (les vrais
+    -- matchs sont deja tous charges pour resoudre le score live) -- NULL
+    -- pour une ligne ecrite par refresh_league_from_archive (archive pure,
+    -- pas de matchs reels sous la main -- la derniere valeur live connue
+    -- reste affichee, deja "done == total" pour une journee terminee).
+    real_matches_progress jsonb,
     updated_at   timestamptz not null default now(),
     primary key (league_code, season, division)
 );

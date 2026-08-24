@@ -39,7 +39,23 @@
 </head>
 <body>
 
-<p class="back-link mpg-no-print"><a href="index.html">&larr; Choisir une ligue</a></p>
+<header class="mpg-banner mpg-no-print">
+  <div class="mpg-banner-inner">
+    <a class="mpg-banner-title" href="accueil.html">MPG Live</a>
+    <nav class="mpg-banner-nav">
+      <a class="mpg-banner-item" href="accueil.html">Accueil</a>
+      <a class="mpg-banner-item" href="super-classement.html">Super classement</a>
+      <a class="mpg-banner-item" href="ligue.html">Ligues</a>
+      <a class="mpg-banner-item" href="division.html">Divisions</a>
+    </nav>
+  </div>
+</header>
+<script>
+  for (const a of document.querySelectorAll(".mpg-banner-item")) {
+    if (a.pathname === location.pathname) a.classList.add("is-active");
+  }
+</script>
+
 <h1>Super Classement</h1>
 <div class="meta" id="subtitle">Chargement...</div>
 

@@ -252,7 +252,28 @@ html.dark, .mpg-dark {
    ============================================================ */
 
 /* --- Bandeau superieur --- */
-.mpg-banner { background-image: var(--mpg-banner); }
+/* Structure (flex/sticky) ajoutee ici plutot que dans le <style> de chaque
+   page -- retour utilisateur 2026-08-24, "inspire toi de ce site" (rendu DOM
+   de monpropregazon.lovable.app/accueil) : le bandeau de nav est commun a
+   toutes les pages, contrairement au reste de la mise en page (largeur/
+   colonnes) qui reste propre a chaque page. */
+/* "Pleine largeur" meme si le <body> de chaque page garde son propre
+   max-width/margin:auto (aucune page de ce site n'a de conteneur separe --
+   retour utilisateur 2026-08-24, meme observation que pour l'idempotence de
+   division.html : eviter de restructurer le HTML existant page par page). */
+.mpg-banner {
+  background-image: var(--mpg-banner); position: sticky; top: 0; z-index: 40;
+  width: 100vw; margin-left: calc(50% - 50vw); margin-right: calc(50% - 50vw);
+  margin-top: -2rem; margin-bottom: 2rem; /* annule le margin:2rem auto du <body> de chaque page */
+}
+.mpg-banner-inner {
+  max-width: 960px; margin: 0 auto; display: flex; align-items: center;
+  justify-content: space-between; gap: 0.75rem; padding: 0.75rem 1rem;
+  flex-wrap: wrap;
+}
+.mpg-banner-title { color: var(--mpg-on-banner); font-weight: 700; font-size: 1.05rem; text-decoration: none; }
+.mpg-banner-nav { display: flex; gap: 0.25rem; flex-wrap: wrap; }
+.mpg-banner-item { text-decoration: none; padding: 0.4rem 0.75rem; font-size: 0.85rem; border-radius: var(--mpg-radius-sm); }
 
 .mpg-banner-item {
   color: var(--mpg-on-banner-soft);

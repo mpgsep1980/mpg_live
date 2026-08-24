@@ -40,7 +40,7 @@ from core.api import (
     get_dashboard,
     get_division_team_names,
 )
-from core.live_scoring import compute_division_live_scores, collect_real_match_ids
+from core.live_scoring import compute_division_live_scores, collect_real_match_ids, FINISHED_MATCH_PERIODS
 from core.archive import archive_closed_gameweek_if_needed
 from core.live_projection import (
     league_setup, resolve_division_rows, resolve_league_wide_ranks, finalize_division_data, compute_super_classement,
@@ -141,9 +141,18 @@ def poll_league(sb: Client, league: dict, game_week: int) -> None:
         except Exception:
             team_names = {}
         data = finalize_division_data(rows, league_ranks, team_names)
+        # "X/N matchs reels" (retour utilisateur 2026-08-24, inspire du rendu
+        # d'Ilan "8/10 matchs reels") -- quasi gratuit ici, real_matches_by_id
+        # est deja entierement charge pour TOUTE la ligue plus haut (ligne
+        # 109), on ne fait que compter par division.
+        real_match_ids = collect_real_match_ids(division_matches_by_div[division])
+        real_matches_done = sum(
+            1 for mid in real_match_ids if real_matches_by_id.get(mid, {}).get("period") in FINISHED_MATCH_PERIODS
+        )
         sb.table("division_classement_live").upsert({
             "league_code": short_id, "season": season, "division": division,
             "game_week": game_week, "data": data, "is_live": True, "updated_at": now,
+            "real_matches_progress": {"done": real_matches_done, "total": len(real_match_ids)},
         }).execute()
 
 
