@@ -38,7 +38,7 @@ from core.live_projection import (
 )
 
 
-def _stats_from_row(row: dict, precious_holder_user_id: str | None = None) -> dict:
+def _stats_from_row(row: dict, precious_holder_user_id: str | None = None, previous_precious_count: int = 0) -> dict:
     """Convertit une ligne de sortie de combined_division_standings (cles
     buts_pour/buts_contre/victory/...) vers la forme stockee en base
     (score+/score-/victory/..., cf. db/schema.sql) -- la meme forme que
@@ -77,6 +77,20 @@ def _stats_from_row(row: dict, precious_holder_user_id: str | None = None) -> di
         # core/general_bonus.py, compute_super_classement).
         "bonus_second": bonus.get("Bonus_Second", 0), "bonus_dernier": bonus.get("Bonus_Dernier", 0),
         "precious": 1 if precious_holder_user_id and row["userId"] == precious_holder_user_id else 0,
+        # Precious_Count -- cumul saison (pas juste "detenteur actuel comme
+        # precious ci-dessus) : Gollum recompense qui a detenu le Precieux le
+        # PLUS SOUVENT, pas qui l'a en ce moment (retour utilisateur
+        # 2026-08-24, "documente dans le Git avec Ilan" -- Corrections_pour_
+        # Sep.md section B3, "en incrementant la valeur archivee"). Repose
+        # sur `previous_precious_count` (l'archive PRECEDENTE de ce meme
+        # manager) plutot qu'un recalcul depuis l'historique complet --
+        # meme logique cumulative que victory/draw/defeat dans
+        # combined_division_standings, juste tenue ici plutot que la-bas
+        # (precious_holder_user_id n'est connu qu'a l'archivage, jamais en
+        # cours de journee).
+        "precious_count": previous_precious_count + (
+            1 if precious_holder_user_id and row["userId"] == precious_holder_user_id else 0
+        ),
         # Boss_Saison -- deja calcule par compute_internal_bonuses (cle
         # "{league_name}_Boss_Saison_{season_number}", jamais surfacee
         # jusqu'ici) : necessaire pour Multi Boss/La Triplette au niveau du
@@ -142,9 +156,11 @@ def archive_closed_gameweek_if_needed(sb, league: dict, closed_game_week: int, t
         )
 
         for row in combined:
+            previous_precious_count = base_by_user.get(row["userId"], {}).get("precious_count", 0)
             sb.table("league_classement_archive").upsert({
                 "league_code": short_id, "season": season, "division": division,
-                "user_id": row["userId"], "stats": _stats_from_row(row, precious_holder_user_id),
+                "user_id": row["userId"],
+                "stats": _stats_from_row(row, precious_holder_user_id, previous_precious_count),
                 "updated_at": now,
             }).execute()
         done += 1
@@ -197,7 +213,12 @@ def rebuild_division_archive(sb, league: dict, division: int, total_divisions: i
             setup["league_size"], setup["season_number"], setup["season_start"], league["nom"],
             setup["internal_cfg"], division_matches=division_matches,
         )
-        base_by_user = {row["userId"]: _stats_from_row(row, precious_holder_user_id) for row in combined_rows}
+        base_by_user = {
+            row["userId"]: _stats_from_row(
+                row, precious_holder_user_id, base_by_user.get(row["userId"], {}).get("precious_count", 0),
+            )
+            for row in combined_rows
+        }
 
     now = datetime.now(timezone.utc).isoformat()
     for user_id, stats in base_by_user.items():

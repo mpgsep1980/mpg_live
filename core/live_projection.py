@@ -42,7 +42,7 @@ PUBLIC_ROW_FIELDS = (
     # _bonus_champion/_precious -- lus directement par compute_super_classement
     # (Multi Boss/La Triplette/Poulidor/La Chèvre operent au niveau Super
     # Classement -- bonus generaux/inter-ligues -- pas resolve_league_wide_ranks).
-    "boss_saison", "bonus_second", "bonus_dernier",
+    "boss_saison", "bonus_second", "bonus_dernier", "precious_count",
 )
 
 
@@ -235,6 +235,7 @@ def _rows_from_archive(base_by_user: dict) -> list[dict]:
             "boss": bool(base.get("bonus_champion", 0) > 0),
             "boss_saison": base.get("boss_saison", 0),
             "bonus_second": base.get("bonus_second", 0), "bonus_dernier": base.get("bonus_dernier", 0),
+            "precious_count": base.get("precious_count", 0),
             "points_pond": base.get("points_pond", 0.0),
             "_bonus_champion": base.get("bonus_champion", 0), "_bonus_podium": base.get("bonus_podium", 0),
             "_precious": base.get("precious", 0),
@@ -317,6 +318,11 @@ def resolve_division_rows(league: dict, division_number: int, division_matches: 
                 "boss": bool(bonus.get("Bonus_Champion", 0) > 0),
                 "boss_saison": next((v for k, v in bonus.items() if "_Boss_Saison_" in k), 0),
                 "bonus_second": bonus.get("Bonus_Second", 0), "bonus_dernier": bonus.get("Bonus_Dernier", 0),
+                # precious_count : jamais incremente EN COURS de journee (le
+                # detenteur du Precieux n'est resoluble qu'a l'archivage, cf.
+                # _precious=0 plus bas) -- reporte tel quel depuis la
+                # derniere archive, incremente seulement dans core/archive.py.
+                "precious_count": base_by_user.get(row["userId"], {}).get("precious_count", 0),
                 "points_pond": row["points_pond"],
                 # Internes -- consommes uniquement par resolve_league_wide_ranks,
                 # jamais publies (cf. finalize_division_data). _precious=0
@@ -483,7 +489,7 @@ def compute_super_classement(sb) -> list[dict]:
     SUM_FIELDS = (
         "score+", "score-", "victory", "draw", "defeat",
         "cleanSheet", "manita", "on_fire", "grotaldo", "owngoals",
-        "Bonus_Second", "Bonus_Dernier",
+        "Bonus_Second", "Bonus_Dernier", "Precious_Count",
     )
     ENTRY_FIELD_MAP = {
         "score+": "buts_pour", "score-": "buts_contre", "victory": "victoires",
@@ -495,6 +501,14 @@ def compute_super_classement(sb) -> list[dict]:
         # calcules par compute_internal_bonuses, simplement jamais
         # surfaces jusqu'ici -- meme cas que Boss_Saison plus haut).
         "Bonus_Second": "bonus_second", "Bonus_Dernier": "bonus_dernier",
+        # Precious_Count -- active Gollum (cumul saison du detenteur du
+        # Precieux, PAS juste le detenteur actuel -- cf. Corrections_pour_
+        # Sep.md section B3, retour utilisateur 2026-08-24 "documente dans
+        # le Git avec Ilan"). La Piñata (PinataScore/*_DTC) reste hors
+        # scope : ces compteurs proviennent d'un pipeline legacy
+        # (Parsed/Scores.json) sans equivalent identifie cote mpg_live --
+        # PAS reconstruit ici plutot que d'improviser une regle non verifiee.
+        "Precious_Count": "precious_count",
     }
 
     stats_by_user: dict[str, dict] = {}
