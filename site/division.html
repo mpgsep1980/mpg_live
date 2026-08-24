@@ -45,6 +45,30 @@
   .status-msg { color: var(--mpg-text-soft); font-size: 0.9rem; margin: 1rem 0; }
   .status-msg.err { color: var(--mpg-danger); }
 
+  /* --- Simulateur de bonus --- */
+  .sim-card {
+    border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius);
+    padding: 1rem 1.25rem; margin: 1rem 0;
+  }
+  .sim-card h2 { margin: 0 0 0.25rem; font-size: 1rem; }
+  .sim-card .meta { margin: 0 0 0.75rem; }
+  .sim-row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: end; margin-bottom: 0.75rem; }
+  .sim-row label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.75rem; color: var(--mpg-text-soft); }
+  .sim-row select, .sim-row input {
+    border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); padding: 0.4rem 0.5rem;
+    font-size: 0.9rem; font-family: inherit; color: var(--mpg-title); background: var(--mpg-surface, #fff);
+  }
+  .sim-row button {
+    background: var(--mpg-action); color: #fff; border: none; border-radius: var(--mpg-radius);
+    padding: 0.5rem 1rem; font-size: 0.9rem; font-weight: 600; cursor: pointer;
+  }
+  .sim-row button:hover { background: var(--mpg-action-hover); }
+  .sim-result { display: flex; gap: 2rem; flex-wrap: wrap; margin-top: 0.5rem; }
+  .sim-result .side { text-align: center; }
+  .sim-result .side.me .total { color: var(--mpg-action); }
+  .sim-result .total { font-size: 1.6rem; font-weight: 700; }
+  .sim-result .label { font-size: 0.75rem; color: var(--mpg-text-soft); }
+
   /* --- Empilement mobile plutot que scroll horizontal (charte section 5) --- */
   @media (max-width: 640px) {
     .mpg-table thead { display: none; }
@@ -76,6 +100,7 @@
 </div>
 
 <div id="situation"></div>
+<div id="simulator"></div>
 <div id="status" class="status-msg"></div>
 <div id="table-container"></div>
 
@@ -147,6 +172,98 @@
     realNameByUid = Object.fromEntries(data.map(m => [m.user_id, m.real_name]));
   }
 
+  // Simulateur de bonus (retour utilisateur 2026-08-24, "on permettra aux
+  // managers de faire des simulations de situations selon les bonus mis ou
+  // non, comme developpe avec lancer_live.bat") -- appelle la fonction
+  // cloud simulate_api/app.py (port de admin_server.py::api_simulate_my_
+  // bonus), qui reutilise core/live_scoring.py tel quel. Aucune logique de
+  // scoring dupliquee ici, juste l'appel + l'affichage du resultat.
+  const SIMULATE_API_BASE = "https://mpg-live.onrender.com";
+  const BONUS_LABELS = {
+    "boostAllPlayers": "Zahia",
+    "boostOnePlayer": "McDo+",
+    "nerfGoalkeeper": "Suarez",
+    "nerfAllPlayers": "Cheat Code",
+    "blockTacticalSubs": "Tonton Pat'",
+    "removeGoal": "Valise à Nanard",
+    "mirror": "Miroir",
+  };
+  const bonusOptionsHtml = () =>
+    `<option value="">Aucun</option>` +
+    Object.entries(BONUS_LABELS).map(([key, label]) => `<option value="${key}">${label}</option>`).join("");
+
+  function simulatorHtml(entry, leagueCode, division, gameWeek) {
+    if (!entry) return "";
+    return `
+      <div class="sim-card">
+        <h2>Simulateur de bonus</h2>
+        <p class="meta">Journée ${gameWeek} -- teste "et si je joue tel coup / mon adversaire joue tel autre",
+        sans rien changer sur MPG. Surtout utile pendant une journée en direct.</p>
+        <div class="sim-row">
+          <label>Mon coup<select id="sim-own-bonus">${bonusOptionsHtml()}</select></label>
+          <label>ID joueur ciblé (McDo+, optionnel)<input id="sim-target-player" placeholder="mpg_championship_player_..." style="width:16em"></label>
+          <label>Coup de l'adversaire<select id="sim-opponent-bonus">${bonusOptionsHtml()}</select></label>
+          <button id="sim-run-btn">Simuler</button>
+        </div>
+        <div id="sim-status" class="status-msg"></div>
+        <div id="sim-result"></div>
+      </div>`;
+  }
+
+  function simResultHtml(match, myUserId) {
+    const meIsHome = match.home.userId === myUserId;
+    const me = meIsHome ? match.home : match.away;
+    const opponent = meIsHome ? match.away : match.home;
+    return `
+      <div class="sim-result">
+        <div class="side me">
+          <div class="total">${fmt(me.total)}</div>
+          <div class="label">Moi (${fmt(me.score)} buts)</div>
+        </div>
+        <div class="side">
+          <div class="total">${fmt(opponent.total)}</div>
+          <div class="label">Adversaire (${fmt(opponent.score)} buts)</div>
+        </div>
+      </div>`;
+  }
+
+  async function simulateBonus(leagueCode, division, gameWeek, userId) {
+    const statusEl = document.getElementById("sim-status");
+    const resultEl = document.getElementById("sim-result");
+    const ownBonus = document.getElementById("sim-own-bonus").value;
+    const targetPlayerId = document.getElementById("sim-target-player").value.trim();
+    const opponentBonus = document.getElementById("sim-opponent-bonus").value;
+
+    statusEl.textContent = "Simulation en cours... (jusqu'à 30s si le service se réveille)";
+    statusEl.className = "status-msg";
+    resultEl.innerHTML = "";
+
+    const url = new URL(`${SIMULATE_API_BASE}/simulate-bonus`);
+    url.searchParams.set("shortId", leagueCode);
+    url.searchParams.set("season", leaguesByCode[leagueCode].season_search);
+    url.searchParams.set("division", division);
+    url.searchParams.set("gameweek", gameWeek);
+    url.searchParams.set("userId", userId);
+    if (ownBonus) url.searchParams.set("ownBonus", ownBonus);
+    if (targetPlayerId) url.searchParams.set("targetPlayerId", targetPlayerId);
+    if (opponentBonus) url.searchParams.set("opponentBonus", opponentBonus);
+
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!res.ok) {
+        statusEl.textContent = "Erreur : " + (data.error || res.statusText);
+        statusEl.className = "status-msg err";
+        return;
+      }
+      statusEl.textContent = "";
+      resultEl.innerHTML = simResultHtml(data, userId);
+    } catch (e) {
+      statusEl.textContent = "Simulation indisponible pour le moment (" + e.message + ").";
+      statusEl.className = "status-msg err";
+    }
+  }
+
   for (const [param, id] of [["user", "userId"]]) {
     const v = params.get(param);
     if (v) document.getElementById(id).value = v;
@@ -216,6 +333,7 @@
     const statusEl = document.getElementById("status");
     const subtitleEl = document.getElementById("subtitle");
     const situationEl = document.getElementById("situation");
+    const simulatorEl = document.getElementById("simulator");
     const tableEl = document.getElementById("table-container");
 
     if (!league) { statusEl.textContent = "Choisis une ligue."; return; }
@@ -223,6 +341,7 @@
     statusEl.textContent = "Chargement...";
     statusEl.className = "status-msg";
     situationEl.innerHTML = "";
+    simulatorEl.innerHTML = "";
     tableEl.innerHTML = "";
 
     const { data, error } = await supabase
@@ -253,6 +372,12 @@
     const entries = row.data || [];
     const myEntry = userId ? entries.find(e => e.userId === userId) : null;
     situationEl.innerHTML = situationHtml(myEntry);
+    simulatorEl.innerHTML = simulatorHtml(myEntry, leagueCode, division, row.game_week);
+    if (myEntry) {
+      document.getElementById("sim-run-btn").addEventListener("click", () => {
+        simulateBonus(leagueCode, division, row.game_week, userId);
+      });
+    }
 
     tableEl.innerHTML = `
       <div class="table-wrap">
