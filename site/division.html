@@ -35,6 +35,21 @@
   .situation-item .label { font-size: 0.75rem; color: var(--mpg-text-soft); }
   .situation-note { margin: 0.75rem 0 0; font-size: 0.75rem; color: var(--mpg-text-soft); }
 
+  /* --- Resultats de la journee --- */
+  .matches-card {
+    border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius);
+    padding: 1rem 1.25rem; margin: 1rem 0;
+  }
+  .matches-card h2 { margin: 0 0 0.75rem; font-size: 1rem; color: var(--mpg-title); }
+  .match-row {
+    display: grid; grid-template-columns: 1fr auto 1fr; gap: 0.75rem; align-items: center;
+    padding: 0.5rem 0; border-bottom: 0.5px solid var(--mpg-border-soft); font-size: 0.9rem;
+  }
+  .match-row:last-child { border-bottom: none; }
+  .match-team { display: flex; align-items: center; gap: 0.3rem; }
+  .match-team.away { justify-content: flex-end; text-align: right; }
+  .match-score { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; padding: 0 0.5rem; }
+
   /* --- Tableau --- */
   .table-wrap { overflow-x: auto; }
   .mpg-table th, .mpg-table td { padding: 0.5rem 0.6rem; border-bottom: 0.5px solid var(--mpg-border-soft); }
@@ -119,6 +134,7 @@
 <div id="simulator"></div>
 <div id="status" class="status-msg"></div>
 <div id="table-container"></div>
+<div id="matches"></div>
 
 <script type="module">
   import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -533,6 +549,33 @@
       </tr>`;
   }
 
+  // "Resultats de la journee" -- retour utilisateur 2026-08-24, inspire de
+  // l'onglet Divisions du site d'Ilan. Donnee deja captee par ailleurs
+  // (live_snapshots, ecrite par scripts/live_job.py::poll_league a chaque
+  // tick), juste pas encore affichee -- pas de nouvelle table necessaire.
+  // Les noms d'equipe viennent de division_classement_live.data (deja
+  // charge par load()), live_snapshots lui-meme n'a que userId/score.
+  function matchRowHtml(match, teamNameByUserId, myUserId) {
+    const homeName = realNameByUid[match.home.userId] || teamNameByUserId[match.home.userId] || match.home.userId;
+    const awayName = realNameByUid[match.away.userId] || teamNameByUserId[match.away.userId] || match.away.userId;
+    const isMe = match.home.userId === myUserId || match.away.userId === myUserId;
+    return `
+      <div class="match-row${isMe ? " mpg-row-selected" : ""}">
+        <div class="match-team">${match.home.userId === myUserId ? "★ " : ""}${homeName}</div>
+        <div class="match-score">${fmt(match.home.score)} – ${fmt(match.away.score)}</div>
+        <div class="match-team away">${awayName}${match.away.userId === myUserId ? " ★" : ""}</div>
+      </div>`;
+  }
+
+  function matchesHtml(matches, teamNameByUserId, myUserId) {
+    if (!matches.length) return "";
+    return `
+      <div class="matches-card">
+        <h2>Résultats de la journée</h2>
+        ${matches.map(m => matchRowHtml(m, teamNameByUserId, myUserId)).join("")}
+      </div>`;
+  }
+
   function situationHtml(entry) {
     if (!entry) return "";
     return `
@@ -557,6 +600,7 @@
     const situationEl = document.getElementById("situation");
     const simulatorEl = document.getElementById("simulator");
     const tableEl = document.getElementById("table-container");
+    const matchesEl = document.getElementById("matches");
 
     if (!league) { statusEl.textContent = "Choisis une ligue."; return; }
 
@@ -565,6 +609,7 @@
     situationEl.innerHTML = "";
     simulatorEl.innerHTML = "";
     tableEl.innerHTML = "";
+    matchesEl.innerHTML = "";
 
     const { data, error } = await supabase
       .from("division_classement_live")
@@ -615,6 +660,18 @@
           <tbody>${entries.map(e => rowHtml(e, userId && e.userId === userId)).join("")}</tbody>
         </table>
       </div>`;
+
+    const { data: snapshotRows } = await supabase
+      .from("live_snapshots")
+      .select("data")
+      .eq("league_code", leagueCode)
+      .eq("season", league.season_search)
+      .eq("division", division)
+      .eq("game_week", row.game_week)
+      .limit(1);
+    const matches = (snapshotRows && snapshotRows[0] && snapshotRows[0].data) || [];
+    const teamNameByUserId = Object.fromEntries(entries.map(e => [e.userId, e.teamName]));
+    matchesEl.innerHTML = matchesHtml(matches, teamNameByUserId, userId);
   }
 
   document.getElementById("userId").addEventListener("change", load);
