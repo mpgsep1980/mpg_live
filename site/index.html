@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MPG Live</title>
+<link rel="stylesheet" href="mpg-tokens.css">
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; color: var(--mpg-title); }
+  h1 { font-size: 1.6rem; margin: 0 0 0.25rem; }
+  .meta { color: var(--mpg-text-soft); font-size: 0.85rem; margin: 0 0 1.5rem; }
+
+  .card {
+    border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius);
+    padding: 1.25rem; margin: 1rem 0; background: var(--mpg-surface, #fff);
+  }
+  .card h2 { margin: 0 0 1rem; font-size: 1.05rem; }
+
+  .row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: end; }
+  label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.75rem; color: var(--mpg-text-soft); flex: 1; min-width: 10em; }
+  select {
+    border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); padding: 0.5rem 0.6rem;
+    font-size: 0.9rem; font-family: inherit; color: var(--mpg-title); background: var(--mpg-surface, #fff);
+  }
+  .actions { display: flex; gap: 0.5rem; margin-top: 0.75rem; flex-wrap: wrap; }
+  a.btn {
+    display: inline-block; background: var(--mpg-action); color: #fff; text-decoration: none;
+    border-radius: var(--mpg-radius); padding: 0.5rem 1rem; font-size: 0.9rem; font-weight: 600;
+  }
+  a.btn:hover { background: var(--mpg-action-hover); }
+  a.btn.secondary { background: var(--mpg-action-soft); color: var(--mpg-action); }
+
+  .super-card { text-align: center; }
+  .super-card p { color: var(--mpg-text-soft); font-size: 0.85rem; margin: 0.25rem 0 1rem; }
+
+  .status-msg { color: var(--mpg-text-soft); font-size: 0.9rem; }
+</style>
+</head>
+<body>
+
+<h1>MPG Live</h1>
+<p class="meta">Classements en direct de nos ligues MPG.</p>
+
+<div class="card">
+  <h2>Voir une ligue</h2>
+  <div class="row">
+    <label>Ligue<select id="leagueCode"></select></label>
+    <label>Division<select id="division"></select></label>
+  </div>
+  <div class="actions">
+    <a class="btn" id="division-link" href="#">Classement de division</a>
+    <a class="btn secondary" id="ligue-link" href="#">Classement de ligue (toutes divisions)</a>
+  </div>
+  <p class="status-msg" id="status"></p>
+</div>
+
+<div class="card super-card">
+  <h2>Super Classement</h2>
+  <p>Toutes les ligues fusionnées, avec les bonus généraux.</p>
+  <a class="btn" href="super-classement.html">Voir le Super Classement</a>
+</div>
+
+<script type="module">
+  import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+  const SUPABASE_URL = "https://zvmngpoogwjiknqrkjky.supabase.co";
+  const SUPABASE_ANON_KEY = "sb_publishable_YhAD0_spZJF58Dt_TTQplQ_VrFSKRK8";
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  let leaguesByCode = {};
+
+  function updateLinks() {
+    const code = document.getElementById("leagueCode").value;
+    const division = document.getElementById("division").value;
+    document.getElementById("division-link").href = `division.html?ligue=${code}&division=${division}`;
+    document.getElementById("ligue-link").href = `ligue.html?ligue=${code}`;
+  }
+
+  function populateDivisionOptions() {
+    const league = leaguesByCode[document.getElementById("leagueCode").value];
+    const divisionSelect = document.getElementById("division");
+    if (!league) { divisionSelect.innerHTML = ""; return; }
+
+    const totalDivisions = Math.round(league.players_number / league.players_per_division);
+    const options = [];
+    for (let d = 1; d <= totalDivisions; d++) options.push(`<option value="${d}">Division ${d}</option>`);
+    divisionSelect.innerHTML = options.join("");
+    updateLinks();
+  }
+
+  async function init() {
+    const statusEl = document.getElementById("status");
+    const { data, error } = await supabase
+      .from("leagues")
+      .select("nom, code, season_search, players_number, players_per_division")
+      .order("nom");
+
+    if (error || !data || !data.length) {
+      statusEl.textContent = "Impossible de charger la liste des ligues.";
+      return;
+    }
+
+    leaguesByCode = Object.fromEntries(data.map(l => [l.code, l]));
+    const select = document.getElementById("leagueCode");
+    select.innerHTML = data.map(l => `<option value="${l.code}">${l.nom.replace(/_/g, " ")}</option>`).join("");
+
+    select.addEventListener("change", populateDivisionOptions);
+    document.getElementById("division").addEventListener("change", updateLinks);
+    populateDivisionOptions();
+  }
+
+  init();
+</script>
+
+</body>
+</html>

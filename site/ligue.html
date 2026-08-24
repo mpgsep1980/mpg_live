@@ -13,15 +13,16 @@
   .meta { color: var(--mpg-text-soft); font-size: 0.85rem; }
   .controls { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: end; margin: 1rem 0; }
   .controls label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.75rem; color: var(--mpg-text-soft); }
-  .controls input {
+  .controls select, .controls input {
     border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); padding: 0.4rem 0.5rem;
-    font-size: 0.9rem; font-family: inherit; color: var(--mpg-title);
+    font-size: 0.9rem; font-family: inherit; color: var(--mpg-title); background: var(--mpg-surface, #fff);
   }
   .controls button {
     background: var(--mpg-action); color: #fff; border: none; border-radius: var(--mpg-radius);
     padding: 0.5rem 1rem; font-size: 0.9rem; font-weight: 600; cursor: pointer;
   }
   .controls button:hover { background: var(--mpg-action-hover); }
+  .back-link { font-size: 0.85rem; }
   .search-row { margin: 0.75rem 0; }
   .search-row input {
     width: 100%; border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius);
@@ -57,12 +58,12 @@
 </head>
 <body>
 
+<p class="back-link mpg-no-print"><a href="index.html">&larr; Choisir une ligue</a></p>
 <h1>Classement de ligue</h1>
 <div class="meta" id="subtitle">Chargement...</div>
 
 <div class="controls mpg-no-print">
-  <label>Code ligue<input id="leagueCode" value="QLKEN7K41"></label>
-  <label>Saison<input id="season" type="number" value="22" style="width:5em"></label>
+  <label>Ligue<select id="leagueCode"></select></label>
   <label>userId (ma ligne)<input id="userId" placeholder="user_..." style="width:10em"></label>
   <button id="load-btn">Charger</button>
 </div>
@@ -86,7 +87,29 @@
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   const params = new URLSearchParams(location.search);
 
-  for (const [param, id] of [["ligue", "leagueCode"], ["season", "season"], ["user", "userId"]]) {
+  // Saison plus saisissable a la main (retour utilisateur 2026-08-24, "on
+  // laisse par defaut la saison en cours car c'est un live") -- toujours
+  // resolue depuis leagues.season_search de la ligue choisie. Le selecteur
+  // de ligue affiche le NOM (pas le code MPG illisible) -- meme source
+  // Supabase que division.html.
+  let leaguesByCode = {};
+
+  async function loadLeagueOptions() {
+    const { data, error } = await supabase
+      .from("leagues")
+      .select("nom, code, season_search")
+      .order("nom");
+    if (error || !data) return;
+
+    leaguesByCode = Object.fromEntries(data.map(l => [l.code, l]));
+    const select = document.getElementById("leagueCode");
+    select.innerHTML = data.map(l => `<option value="${l.code}">${l.nom.replace(/_/g, " ")}</option>`).join("");
+
+    const wantedCode = params.get("ligue");
+    if (wantedCode && leaguesByCode[wantedCode]) select.value = wantedCode;
+  }
+
+  for (const [param, id] of [["user", "userId"]]) {
     const v = params.get(param);
     if (v) document.getElementById(id).value = v;
   }
@@ -142,13 +165,16 @@
   }
 
   async function load() {
-    const leagueCode = document.getElementById("leagueCode").value.trim();
-    const season = Number(document.getElementById("season").value);
+    const leagueCode = document.getElementById("leagueCode").value;
+    const league = leaguesByCode[leagueCode];
     const userId = document.getElementById("userId").value.trim();
 
     const statusEl = document.getElementById("status");
     const subtitleEl = document.getElementById("subtitle");
     const tableEl = document.getElementById("table-container");
+
+    if (!league) { statusEl.textContent = "Choisis une ligue."; return; }
+    const season = league.season_search;
 
     statusEl.textContent = "Chargement...";
     statusEl.className = "status-msg";
@@ -181,7 +207,7 @@
     const gameWeeks = [...new Set(data.map(r => r.game_week))];
     const latestUpdate = data.reduce((max, r) => (r.updated_at > max ? r.updated_at : max), data[0].updated_at);
     const anyLive = data.some(r => r.is_live);
-    subtitleEl.textContent = `${data.length} division(s) · Journée ${gameWeeks.length === 1 ? gameWeeks[0] : gameWeeks.join("/")}`
+    subtitleEl.textContent = `${league.nom.replace(/_/g, " ")} · ${data.length} division(s) · Journée ${gameWeeks.length === 1 ? gameWeeks[0] : gameWeeks.join("/")}`
       + `${anyLive ? " · en direct" : " · dernière journée archivée"} · mis à jour ${new Date(latestUpdate).toLocaleString("fr-FR")}`;
 
     const entries = data.flatMap(row => (row.data || []).map(e => ({ ...e, division: row.division })));
@@ -203,6 +229,7 @@
 
   document.getElementById("load-btn").addEventListener("click", load);
   document.getElementById("search").addEventListener("input", applyFilter);
+  await loadLeagueOptions();
   load();
 </script>
 
