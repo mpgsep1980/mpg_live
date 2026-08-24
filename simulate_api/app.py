@@ -7,14 +7,18 @@ autre" pendant une journee EN COURS -- retour utilisateur 2026-08-24 :
 "a chaque fois qu'une journee commencera, on ajoutera les points
 theoriques a l'instant T et on permettra aux managers de faire des
 simulations de situations selon les bonus mis ou non, comme developpe
-avec lancer_live.bat".
+avec lancer_live.bat", puis "regarde bien ce qui a deja ete fait ... tout
+est disponible, il faut que tu branches tout".
 
-Port de UN SEUL endpoint de admin_server.py (mpg_app) pour ce premier
-increment -- la simulation "Mon Bonus" par match (pas le simulateur de
-journee acceleree GameweekSimulation, une fonctionnalite distincte, plus
-lourde, pas demandee ici). Reutilise core/live_scoring.py/core/api.py TELS
-QUELS (aucune reimplementation JS de la logique de scoring -- decision
-utilisateur 2026-08-24, "petite fonction cloud Python").
+Port de DEUX endpoints de admin_server.py (mpg_app) -- "Mon Bonus"
+(simulate-bonus, un choix manuel) ET "Bonus Adverse -- etat des lieux"
+(live-scenario-sweep, balaie AUTOMATIQUEMENT tous les bonus adverses
+possibles pour cette taille de division, McDo+ teste sur chaque joueur de
+champ). PAS le simulateur de journee acceleree GameweekSimulation, une
+fonctionnalite distincte, plus lourde, pas demandee ici. Reutilise
+core/live_scoring.py/core/api.py TELS QUELS (aucune reimplementation JS de
+la logique de scoring -- decision utilisateur 2026-08-24, "petite fonction
+cloud Python").
 
 Contrairement a admin_server.py (local, pas de controle d'acces necessaire
 sur 127.0.0.1), ce service est PUBLIC sur internet -- mais reste read-only
@@ -53,60 +57,188 @@ def _add_cors_headers(response):
     return response
 
 
-@app.route("/simulate-bonus", methods=["GET", "OPTIONS"])
-def simulate_bonus():
-    """Reproduit tel quel admin_server.py::api_simulate_my_bonus (mpg_app) --
-    memes parametres, meme contrat. Params (query string) :
-    shortId, season, division, gameweek, userId (obligatoires),
-    ownBonus/targetPlayerId/opponentBonus (optionnels -- le coup HYPOTHETIQUE
-    a tester, pas necessairement celui reellement declare sur MPG).
-    Renvoie le match recalcule (home/away, "score", "total", badges...)
-    exactement comme s'il avait ete joue avec ces choix -- ne modifie RIEN
-    sur MPG ni Supabase, purement un calcul en memoire."""
-    if request.method == "OPTIONS":
-        return "", 204
+class _BadRequest(Exception):
+    def __init__(self, message: str, status: int = 400):
+        self.message = message
+        self.status = status
 
-    short_id = request.args.get("shortId")
-    season = request.args.get("season")
-    division = request.args.get("division")
-    game_week = request.args.get("gameweek")
-    user_id = request.args.get("userId")
-    own_bonus = request.args.get("ownBonus") or None
-    target_player_id = request.args.get("targetPlayerId") or None
-    opponent_bonus = request.args.get("opponentBonus") or None
+
+def _load_match_context(args, require_own_bonus_valid: bool = True):
+    """Commun a simulate-bonus et live-scenario-sweep : resout le match du
+    manager + son adversaire + la taille de division + les vrais matchs
+    (un seul fetch reseau par vrai match, partage par tous les scenarios
+    recalcules ensuite EN MEMOIRE -- meme principe que admin_server.py::
+    api_live_scenario_sweep, "en UN SEUL fetch reseau"). Leve _BadRequest
+    (jamais None) pour que chaque route garde son propre message d'erreur
+    exact cote appelant."""
+    short_id = args.get("shortId")
+    season = args.get("season")
+    division = args.get("division")
+    game_week = args.get("gameweek")
+    user_id = args.get("userId")
+    own_bonus = args.get("ownBonus") or None
 
     if not all([short_id, season, division, game_week, user_id]):
-        return jsonify({"error": "parametres manquants"}), 400
-    for bonus in (own_bonus, opponent_bonus):
-        if bonus and bonus not in VALID_BONUSES:
-            return jsonify({"error": f"Bonus inconnu ou pas encore supporte en live : {bonus}"}), 400
+        raise _BadRequest("parametres manquants")
+    if own_bonus and own_bonus not in VALID_BONUSES:
+        raise _BadRequest(f"Bonus inconnu ou pas encore supporte en live : {own_bonus}")
 
     division_matches = get_division_matches(short_id, int(season), int(division), int(game_week))
     div_match = next(
         (m for m in division_matches if user_id in (m["home"].get("userId"), m["away"].get("userId"))), None,
     )
     if not div_match:
-        return jsonify({"error": "Match introuvable pour ce manager dans cette division"}), 404
+        raise _BadRequest("Match introuvable pour ce manager dans cette division", 404)
     opponent_user_id = (
         div_match["away"]["userId"] if div_match["home"].get("userId") == user_id else div_match["home"]["userId"]
     )
 
     division_size = len(division_matches) * 2
-    for bonus in (own_bonus, opponent_bonus):
-        if bonus and not bonus_available_for_division_size(bonus, division_size):
-            return jsonify({"error": f"{bonus} n'existe pas pour une division de {division_size} (tableau officiel MPG)"}), 400
-
-    bonus_choices = {}
-    if own_bonus:
-        bonus_choices[user_id] = {"bonus": own_bonus, "targetPlayerId": target_player_id}
-    if opponent_bonus:
-        bonus_choices[opponent_user_id] = {"bonus": opponent_bonus, "targetPlayerId": None}
+    if require_own_bonus_valid and own_bonus and not bonus_available_for_division_size(own_bonus, division_size):
+        raise _BadRequest(f"{own_bonus} n'existe pas pour une division de {division_size} (tableau officiel MPG)")
 
     match_ids = collect_real_match_ids([div_match])
     real_matches_by_id = {mid: get_championship_match(mid) for mid in match_ids}
-    match = compute_division_live_scores([div_match], real_matches_by_id, bonus_choices)[0]
 
+    return {
+        "div_match": div_match, "user_id": user_id, "opponent_user_id": opponent_user_id,
+        "division_size": division_size, "real_matches_by_id": real_matches_by_id, "own_bonus": own_bonus,
+    }
+
+
+@app.route("/simulate-bonus", methods=["GET", "OPTIONS"])
+def simulate_bonus():
+    """Reproduit tel quel admin_server.py::api_simulate_my_bonus (mpg_app) --
+    memes parametres, meme contrat. Params (query string) :
+    shortId, season, division, gameweek, userId (obligatoires),
+    ownBonus/targetPlayerId/opponentBonus (optionnels -- le coup HYPOTHETIQUE
+    a tester, pas necessairement celui reellement declare sur MPG). Appele
+    SANS aucun bonus, sert aussi a recuperer les compositions completes
+    (players/out/bench avec noms reels) pour construire le selecteur de
+    cible cote site -- meme reponse brute que compute_division_live_scores,
+    rien de retire.
+    Renvoie le match recalcule (home/away, "score", "total", badges...)
+    exactement comme s'il avait ete joue avec ces choix -- ne modifie RIEN
+    sur MPG ni Supabase, purement un calcul en memoire."""
+    if request.method == "OPTIONS":
+        return "", 204
+
+    target_player_id = request.args.get("targetPlayerId") or None
+    opponent_bonus = request.args.get("opponentBonus") or None
+    if opponent_bonus and opponent_bonus not in VALID_BONUSES:
+        return jsonify({"error": f"Bonus inconnu ou pas encore supporte en live : {opponent_bonus}"}), 400
+
+    try:
+        ctx = _load_match_context(request.args)
+    except _BadRequest as e:
+        return jsonify({"error": e.message}), e.status
+
+    if opponent_bonus and not bonus_available_for_division_size(opponent_bonus, ctx["division_size"]):
+        return jsonify({"error": f"{opponent_bonus} n'existe pas pour une division de {ctx['division_size']} (tableau officiel MPG)"}), 400
+
+    bonus_choices = {}
+    if ctx["own_bonus"]:
+        bonus_choices[ctx["user_id"]] = {"bonus": ctx["own_bonus"], "targetPlayerId": target_player_id}
+    if opponent_bonus:
+        bonus_choices[ctx["opponent_user_id"]] = {"bonus": opponent_bonus, "targetPlayerId": None}
+
+    match = compute_division_live_scores([ctx["div_match"]], ctx["real_matches_by_id"], bonus_choices)[0]
     return jsonify(match)
+
+
+@app.route("/live-scenario-sweep", methods=["GET", "OPTIONS"])
+def live_scenario_sweep():
+    """Reproduit tel quel admin_server.py::api_live_scenario_sweep -- etat
+    des lieux complet des coups adverses possibles (Zahia/Suarez/Cheat Code/
+    Tonton Pat'/Valise a Nanard/Miroir, filtre par taille de division, plus
+    McDo+ teste sur CHAQUE joueur de champ adverse -- jamais le gardien) en
+    UN SEUL fetch reseau. ownBonus/targetPlayerId (mon coup, optionnel)
+    reste fixe sur tous les scenarios balayes. Renvoie {baseline, scenarios}
+    -- scenarios tries du plus defavorable au plus favorable pour moi
+    (deltaMine - deltaTheirs)."""
+    if request.method == "OPTIONS":
+        return "", 204
+
+    own_target_player_id = request.args.get("targetPlayerId") or None
+
+    try:
+        ctx = _load_match_context(request.args)
+    except _BadRequest as e:
+        return jsonify({"error": e.message}), e.status
+
+    user_id, opponent_user_id = ctx["user_id"], ctx["opponent_user_id"]
+    div_match, real_matches_by_id, division_size = ctx["div_match"], ctx["real_matches_by_id"], ctx["division_size"]
+    own_bonus = ctx["own_bonus"]
+
+    def compute_match(bonus_choices):
+        return compute_division_live_scores([div_match], real_matches_by_id, bonus_choices)[0]
+
+    def summarize(match):
+        mine = match["home"] if match["home"]["userId"] == user_id else match["away"]
+        theirs = match["away"] if mine is match["home"] else match["home"]
+        return {"myScore": mine["score"], "theirScore": theirs["score"]}
+
+    base_bonus_choices = {}
+    if own_bonus:
+        base_bonus_choices[user_id] = {"bonus": own_bonus, "targetPlayerId": own_target_player_id}
+
+    baseline_match = compute_match(dict(base_bonus_choices))
+    baseline = summarize(baseline_match)
+    opponent_team = baseline_match["home"] if baseline_match["home"]["userId"] == opponent_user_id else baseline_match["away"]
+    outfield_players = [(pid, p["name"]) for pid, p in opponent_team["players"].items() if p["position"] != 1]
+
+    def scenario_row(bonus_key, label, target_player_id=None, target_name=None):
+        choices = dict(base_bonus_choices)
+        choices[opponent_user_id] = {"bonus": bonus_key, "targetPlayerId": target_player_id}
+        match = compute_match(choices)
+        result = summarize(match)
+
+        # Si je joue Miroir et que ce scenario teste un McDo+ adverse, mon
+        # Miroir le vole -- indique QUI chez moi en beneficie (meme numero de
+        # slot que la cible adverse, cf. resolve_match_bonus_effects), sinon
+        # invisible/pas verifiable sans regarder le plateau.
+        display_label = label
+        if own_bonus == "mirror" and bonus_key == "boostOnePlayer":
+            mine = match["home"] if match["home"]["userId"] == user_id else match["away"]
+            beneficiary = next((p["name"] for p in mine["players"].values() if p.get("bonus_tag") == "boostOnePlayer"), None)
+            if beneficiary:
+                display_label = f"{label} (chez moi : {beneficiary})"
+
+        return {
+            "opponentBonus": bonus_key, "label": display_label,
+            "targetPlayerId": target_player_id, "targetName": target_name,
+            **result,
+            "deltaMine": round(result["myScore"] - baseline["myScore"], 2),
+            "deltaTheirs": round(result["theirScore"] - baseline["theirScore"], 2),
+        }
+
+    # Seuls les bonus qui EXISTENT pour cette taille de division sont
+    # balayes (tableau officiel MPG) -- inutile/trompeur de tester un
+    # Miroir dans une division de 4 ou il n'est pas encore alloue.
+    all_types = [
+        ("boostAllPlayers", "Zahia"),
+        ("nerfGoalkeeper", "Suarez"),
+        ("nerfAllPlayers", "Cheat Code"),
+        ("blockTacticalSubs", "Tonton Pat'"),
+        ("removeGoal", "Valise à Nanard"),
+        ("mirror", "Miroir"),
+    ]
+    scenarios = [
+        scenario_row(bonus_key, label)
+        for bonus_key, label in all_types
+        if bonus_available_for_division_size(bonus_key, division_size)
+    ]
+    if bonus_available_for_division_size("boostOnePlayer", division_size):
+        scenarios.extend(
+            scenario_row("boostOnePlayer", f"McDo+ sur {name}", pid, name)
+            for pid, name in outfield_players
+        )
+    # Trie par swing net de difference de buts (le plus defavorable pour moi
+    # en premier) -- Suarez/Cheat Code se manifestent surtout via deltaTheirs
+    # (le gardien ne marque jamais lui-meme), deltaMine seul serait trompeur.
+    scenarios.sort(key=lambda s: s["deltaMine"] - s["deltaTheirs"])
+
+    return jsonify({"baseline": baseline, "scenarios": scenarios})
 
 
 @app.route("/health", methods=["GET"])
