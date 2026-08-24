@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MPG Live -- Ligues</title>
+<link rel="stylesheet" href="mpg-tokens.css">
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: var(--mpg-title); }
+  h1 { font-size: 1.4rem; margin: 0 0 0.25rem; }
+  .meta { color: var(--mpg-text-soft); font-size: 0.85rem; margin: 0 0 1.5rem; }
+
+  .league-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+  @media (max-width: 640px) { .league-grid { grid-template-columns: 1fr; } }
+
+  .league-card {
+    display: grid; grid-template-columns: auto 1fr auto; gap: 0.75rem; align-items: center;
+    border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); padding: 1rem;
+    text-decoration: none; color: inherit; transition: background-color 150ms ease;
+  }
+  .league-card:hover { background-color: var(--mpg-border-soft); }
+  .league-bar { width: 0.25rem; align-self: stretch; border-radius: 999px; }
+  .league-card-name { font-weight: 600; }
+  .league-card-meta { font-size: 0.8rem; color: var(--mpg-text-soft); margin-top: 0.15rem; }
+  .league-card-chevron { color: var(--mpg-text-off); font-size: 1.1rem; }
+
+  .status-msg { color: var(--mpg-text-soft); font-size: 0.9rem; margin: 1rem 0; }
+  .status-msg.err { color: var(--mpg-danger); }
+</style>
+</head>
+<body>
+
+<header class="mpg-banner mpg-no-print">
+  <div class="mpg-banner-inner">
+    <a class="mpg-banner-title" href="index.html">MPG Live</a>
+    <nav class="mpg-banner-nav">
+      <a class="mpg-banner-item" href="index.html">Accueil</a>
+      <a class="mpg-banner-item" href="super-classement.html">Super classement</a>
+      <a class="mpg-banner-item" href="ligues.html">Ligues</a>
+      <a class="mpg-banner-item" href="division.html">Divisions</a>
+    </nav>
+  </div>
+</header>
+<script>
+  for (const a of document.querySelectorAll(".mpg-banner-item")) {
+    if (a.pathname === location.pathname) a.classList.add("is-active");
+  }
+</script>
+
+<h1>Ligues</h1>
+<div class="meta" id="subtitle">Chargement...</div>
+
+<div id="status" class="status-msg"></div>
+<div class="league-grid" id="grid"></div>
+
+<script type="module">
+  import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+  const SUPABASE_URL = "https://zvmngpoogwjiknqrkjky.supabase.co";
+  const SUPABASE_ANON_KEY = "sb_publishable_YhAD0_spZJF58Dt_TTQplQ_VrFSKRK8";
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // Meme mapping que index.html/division.html/ligue.html -- voir leur
+  // commentaire pour la justification (nom de ligue = championnat reel
+  // imite, confirme par le rendu DOM du site d'Ilan).
+  const LEAGUE_THEME_BY_NOM = {
+    "ligue_camembert": "l1",
+    "rosbeef_league": "pl",
+    "liga_tapas": "liga",
+    "lega_calzone": "seriea",
+    "ligue_2_ekt": "l2",
+    "ligue_des_champignons": "ldc",
+  };
+  const THEME_BAR = {
+    l1: "var(--mpg-league-l1)", pl: "var(--mpg-league-pl)", liga: "var(--mpg-league-liga)",
+    seriea: "var(--mpg-league-seriea)", l2: "var(--mpg-league-l2)", ldc: "var(--mpg-league-ldc)",
+    neutral: "var(--mpg-text-off)",
+  };
+  const THEME_TEXT = {
+    l1: "var(--mpg-league-l1)", pl: "var(--mpg-league-pl)", liga: "var(--mpg-league-liga)",
+    seriea: "var(--mpg-league-seriea-text)", l2: "var(--mpg-league-l2-text)", ldc: "var(--mpg-league-ldc)",
+    neutral: "var(--mpg-text-soft)",
+  };
+  function leagueTheme(nom) {
+    return LEAGUE_THEME_BY_NOM[(nom || "").toLowerCase()] || "neutral";
+  }
+
+  function cardHtml(league, gameWeek) {
+    const theme = leagueTheme(league.nom);
+    const totalDivisions = Math.round(league.players_number / league.players_per_division);
+    // "Phase 1" (poules) vs "Phase 2" -- meme repli que core/league.py
+    // (pool_gameweeks), pas de calcul si aucune journee n'a encore ete
+    // pollee (mieux vaut ne rien afficher que deviner une phase fausse).
+    const phase = gameWeek == null || !league.pool_gameweeks
+      ? null
+      : (gameWeek <= league.pool_gameweeks ? "Phase 1" : "Phase 2");
+    const metaParts = [phase, `${totalDivisions} division${totalDivisions > 1 ? "s" : ""}`].filter(Boolean);
+    return `
+      <a class="league-card" href="ligue.html?ligue=${league.code}">
+        <span class="league-bar" style="background:${THEME_BAR[theme]}"></span>
+        <div>
+          <div class="league-card-name" style="color:${THEME_TEXT[theme]}">${league.nom.replace(/_/g, " ")}</div>
+          <div class="league-card-meta">${metaParts.join(" · ")}</div>
+        </div>
+        <span class="league-card-chevron">&rsaquo;</span>
+      </a>`;
+  }
+
+  async function load() {
+    const statusEl = document.getElementById("status");
+    const subtitleEl = document.getElementById("subtitle");
+    const gridEl = document.getElementById("grid");
+
+    const [{ data: leaguesData, error }, { data: divData }] = await Promise.all([
+      supabase.from("leagues").select("code, nom, players_number, players_per_division, pool_gameweeks").order("nom"),
+      supabase.from("division_classement_live").select("league_code, game_week"),
+    ]);
+
+    if (error || !leaguesData || !leaguesData.length) {
+      statusEl.textContent = "Impossible de charger la liste des ligues.";
+      statusEl.className = "status-msg err";
+      subtitleEl.textContent = "";
+      return;
+    }
+
+    const gameWeekByLeague = {};
+    for (const row of (divData || [])) {
+      gameWeekByLeague[row.league_code] = Math.max(gameWeekByLeague[row.league_code] || 0, row.game_week);
+    }
+
+    statusEl.textContent = "";
+    subtitleEl.textContent = `${leaguesData.length} championnats, ${leaguesData[0].players_number} participants`;
+    gridEl.innerHTML = leaguesData.map(l => cardHtml(l, gameWeekByLeague[l.code] || null)).join("");
+  }
+
+  load();
+</script>
+
+</body>
+</html>
