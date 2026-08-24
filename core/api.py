@@ -302,18 +302,6 @@ def get_league_team_ids(short_id: str, season_number: int, token: str = None, ma
     return team_ids
 
 
-def get_division_teams(short_id: str, season_number: int, division_number: int, token: str = None) -> list[dict]:
-    """Equipes d'une division (nom, abreviation, budget restant, effectif avec prix
-    d'enchere/tour de mercato...), via /teams/division/{divisionId} -- endpoint
-    trouve par l'utilisateur via DevTools. C'est le SEUL endroit ou MPG expose le
-    nom d'equipe : /division/mpg_division_{...} et /league/{leagueId} ne l'ont
-    jamais (verifie 2026-08-07)."""
-    division_id = f"mpg_division_{short_id}_{season_number}_{division_number}"
-    r = requests.get(f"{MPG_API}/teams/division/{division_id}", headers=build_headers(token), timeout=TIMEOUT)
-    r.raise_for_status()
-    return r.json()
-
-
 def get_league_team_info(short_id: str, season_number: int, token: str = None, max_divisions: int = 30) -> dict[str, dict]:
     """{userId: {teamId, name, abbreviation, budget, squadSize}} pour toute une
     ligue/saison -- combine `usersTeams` (get_division_info, userId->teamId) et

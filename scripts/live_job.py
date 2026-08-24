@@ -44,8 +44,9 @@ from core.live_scoring import compute_division_live_scores, collect_real_match_i
 from core.archive import archive_closed_gameweek_if_needed
 from core.live_projection import (
     league_setup, resolve_division_rows, resolve_league_wide_ranks, finalize_division_data, compute_super_classement,
+    refresh_division_classement_from_archive,
 )
-from core.league import current_real_season_start_year
+from core.league import current_real_season_start_year, get_match_bonus_config
 
 
 def supabase_client() -> Client:
@@ -146,6 +147,45 @@ def poll_league(sb: Client, league: dict, game_week: int) -> None:
         }).execute()
 
 
+def refresh_league_from_archive(sb, league: dict, total_divisions: int) -> None:
+    """Rafraichit division_classement_live pour TOUTE une ligue depuis
+    league_classement_archive seule (pas de poll live ce tick) -- pour
+    qu'une division deja archivee (backfill, ou fenetre fermee sans poll
+    live depuis) ne reste pas vide sur site/division.html tant qu'aucun
+    poll live n'a eu lieu (retour utilisateur 2026-08-24 : "Aucun
+    classement" affiche pour Ligue_Camembert alors que sa journee 1 etait
+    deja archivee -- jamais rafraichi faute de fenetre live). N'ecrit rien
+    pour une division sans aucune archive (saison pas encore commencee)."""
+    short_id = league["code"]
+    season = league["seasonSearch"]
+
+    rows_by_division = {}
+    last_game_week_by_division = {}
+    for division in range(1, total_divisions + 1):
+        rows, last_game_week = refresh_division_classement_from_archive(sb, league, division)
+        if rows:
+            rows_by_division[division] = rows
+            last_game_week_by_division[division] = last_game_week
+    if not rows_by_division:
+        return
+
+    match_bonus_cfg = get_match_bonus_config(league)
+    league_ranks = resolve_league_wide_ranks(rows_by_division, match_bonus_cfg)
+
+    now = datetime.now(timezone.utc).isoformat()
+    for division, rows in rows_by_division.items():
+        try:
+            team_names = get_division_team_names(short_id, season, division)
+        except Exception:
+            team_names = {}
+        data = finalize_division_data(rows, league_ranks, team_names)
+        sb.table("division_classement_live").upsert({
+            "league_code": short_id, "season": season, "division": division,
+            "game_week": last_game_week_by_division[division], "data": data,
+            "is_live": False, "updated_at": now,
+        }).execute()
+
+
 def main() -> None:
     sb = supabase_client()
 
@@ -175,7 +215,29 @@ def main() -> None:
                 prev_state = prev_state_res.data[0]
                 if now > parse_iso(prev_state["window_end"]):
                     total_divisions = get_live_total_divisions(short_id)
-                    archive_closed_gameweek_if_needed(sb, league, prev_state["game_week"], total_divisions)
+                    newly_archived = archive_closed_gameweek_if_needed(sb, league, prev_state["game_week"], total_divisions)
+                    if newly_archived:
+                        # Rafraichit tout de suite division_classement_live avec
+                        # le resultat fraichement archive -- sinon la page reste
+                        # figee sur le dernier etat live (en cours) jusqu'a la
+                        # PROCHAINE fenetre, retour utilisateur 2026-08-24.
+                        refresh_league_from_archive(sb, league, total_divisions)
+
+            # Rattrapage ponctuel : une ligue qui a une archive mais n'a
+            # JAMAIS ete pollee en direct (backfill seul, cf. retour
+            # utilisateur 2026-08-24 -- Ligue_Camembert fraichement ajoutee)
+            # ne recevrait sinon jamais de ligne dans division_classement_live
+            # avant sa prochaine fenetre live. Verifie une seule fois --
+            # des qu'une ligne existe, plus jamais redeclenche par cette
+            # branche (evite de refaire cet appel a chaque tick pour rien).
+            has_live_row = (
+                sb.table("division_classement_live").select("division")
+                .eq("league_code", short_id).eq("season", league["seasonSearch"]).limit(1)
+                .execute().data
+            )
+            if not has_live_row:
+                total_divisions = get_live_total_divisions(short_id)
+                refresh_league_from_archive(sb, league, total_divisions)
 
             champ_id = championship_ids.get(short_id)
             if champ_id is None:

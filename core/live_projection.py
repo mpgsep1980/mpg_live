@@ -192,6 +192,63 @@ def league_setup(sb, league: dict, live_divisions: list[int], game_week: int) ->
     }
 
 
+def _rows_from_archive(base_by_user: dict) -> list[dict]:
+    """Lignes de classement construites UNIQUEMENT depuis l'archive (aucun
+    division_matches necessaire) -- factorise depuis l'ancienne branche
+    "deja archivee" de resolve_division_rows pour etre aussi reutilise par
+    refresh_division_classement_from_archive (retour utilisateur 2026-08-24 :
+    une division reste vide sur site/division.html tant qu'aucune fenetre
+    live n'a jamais ete pollee, meme si son archive existe deja).
+    pichichi/mur/boss retombent a 0/False -- meme limite connue v1 que
+    l'origine (bonus internes non stockes par l'archive, cf. db/schema.sql)."""
+    rows = []
+    for uid, base in base_by_user.items():
+        rows.append({
+            "userId": uid, "teamName": base.get("teamName", ""),
+            "points": _raw_points(base.get("victory", 0), base.get("draw", 0)),
+            "matches_joues": base.get("matches_joues", 0),
+            "victoires": base.get("victory", 0), "nuls": base.get("draw", 0), "defaites": base.get("defeat", 0),
+            "buts_pour": base.get("score+", 0), "buts_contre": base.get("score-", 0),
+            "cleanSheet": base.get("cleanSheet", 0), "manita": base.get("manita", 0), "on_fire": base.get("on_fire", 0),
+            "grotaldo": base.get("grotaldo", 0), "owngoals": base.get("owngoals", 0),
+            "pichichi": 0, "mur": 0, "boss": False,
+            "points_pond": base.get("points_pond", 0.0),
+        })
+    return rows
+
+
+def _rank_rows(rows: list[dict]) -> list[dict]:
+    """Rang + diff (3 premiers criteres MPG : points bruts, diff generale,
+    attaque) -- factorise depuis la fin de resolve_division_rows, partage
+    par les deux branches (live/archivee) ET par
+    refresh_division_classement_from_archive."""
+    ranked = sorted(
+        rows,
+        key=lambda r: (-r["points"], -(r["buts_pour"] - r["buts_contre"]), -r["buts_pour"]),
+    )
+    for i, row in enumerate(ranked, start=1):
+        row["rang"] = i
+        row["diff"] = row["buts_pour"] - row["buts_contre"]
+    return ranked
+
+
+def refresh_division_classement_from_archive(sb, league: dict, division: int) -> tuple[list[dict], int]:
+    """Reconstruit les lignes de classement d'UNE division UNIQUEMENT depuis
+    league_classement_archive, sans poll live -- pour que site/division.html
+    affiche deja quelque chose entre deux fenetres, meme pour une division
+    jamais encore pollee en direct (retour utilisateur 2026-08-24, apres
+    avoir constate une page vide malgre une journee deja archivee a la
+    main). Renvoie (rows, last_game_week) -- ([], 0) si rien d'archive.
+    last_game_week est approxime par le max de matches_joues (meme
+    convention que is_gameweek_archived ailleurs dans ce module) --
+    l'archive ne stocke pas le numero de journee directement."""
+    base_by_user = load_base_division_classement(sb, league["code"], league["seasonSearch"], division)
+    if not base_by_user:
+        return [], 0
+    last_game_week = max((b.get("matches_joues", 0) for b in base_by_user.values()), default=0)
+    return _rank_rows(_rows_from_archive(base_by_user)), last_game_week
+
+
 def resolve_division_rows(league: dict, division_number: int, division_matches: list[dict],
                            game_week: int, total_divisions: int, setup: dict) -> tuple[list[dict], bool]:
     """Classement resolu d'UNE division pour ce tick -- rang (3 premiers
@@ -209,22 +266,7 @@ def resolve_division_rows(league: dict, division_number: int, division_matches: 
     base_by_user = setup["base_by_division"].get(division_number, {})
 
     if is_gameweek_archived(base_by_user, user_ids, game_week):
-        rows = []
-        for uid in user_ids:
-            base = base_by_user.get(uid)
-            if not base:
-                continue
-            rows.append({
-                "userId": uid, "teamName": base.get("teamName", ""),
-                "points": _raw_points(base.get("victory", 0), base.get("draw", 0)),
-                "matches_joues": base.get("matches_joues", 0),
-                "victoires": base.get("victory", 0), "nuls": base.get("draw", 0), "defaites": base.get("defeat", 0),
-                "buts_pour": base.get("score+", 0), "buts_contre": base.get("score-", 0),
-                "cleanSheet": base.get("cleanSheet", 0), "manita": base.get("manita", 0), "on_fire": base.get("on_fire", 0),
-                "grotaldo": base.get("grotaldo", 0), "owngoals": base.get("owngoals", 0),
-                "pichichi": 0, "mur": 0, "boss": False,
-                "points_pond": base.get("points_pond", 0.0),
-            })
+        rows = _rows_from_archive({uid: base_by_user[uid] for uid in user_ids if uid in base_by_user})
         is_live = False
     else:
         delta_rows = division_delta(division_matches, division_number, game_week, league, total_divisions)
@@ -254,14 +296,7 @@ def resolve_division_rows(league: dict, division_number: int, division_matches: 
             })
         is_live = True
 
-    ranked = sorted(
-        rows,
-        key=lambda r: (-r["points"], -(r["buts_pour"] - r["buts_contre"]), -r["buts_pour"]),
-    )
-    for i, row in enumerate(ranked, start=1):
-        row["rang"] = i
-        row["diff"] = row["buts_pour"] - row["buts_contre"]
-    return ranked, is_live
+    return _rank_rows(rows), is_live
 
 
 def resolve_league_wide_ranks(rows_by_division: dict[int, list[dict]], match_bonus_cfg: dict) -> dict[str, dict]:
