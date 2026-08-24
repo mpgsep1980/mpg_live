@@ -13,12 +13,18 @@ jamais d'erreur) -- inutile de retirer les categories dont la source
 manque encore, elles s'activeront automatiquement le jour ou leur champ
 sera ajoute au schema.
 
-PAS encore portes : PinataScore/PINATA_DTC_WEIGHTS/compute_pinata_score
+Poulidor/La Chèvre ACTIVES depuis le retour utilisateur 2026-08-24 ("vas-y",
+comparaison contre Super_Classement_General_V2.ipynb) : Bonus_Second/
+Bonus_Dernier etaient deja calcules par core.internal_bonus.
+compute_internal_bonuses, simplement jamais surfaces jusqu'a
+core/archive.py::_stats_from_row -- meme cle brute, aucune nouvelle
+logique.
+
+Restent PAS portees : PinataScore/PINATA_DTC_WEIGHTS/compute_pinata_score
 (La Piñata a besoin de 8 compteurs *_DTC, aucune source Supabase en v1),
-Precious_Count (Gollum, meme raison que Precious ailleurs dans ce projet),
-Bonus_Second/Bonus_Dernier cumules sur la saison (Poulidor/La Chèvre --
-ces deux bonus internes ne sont pas encore accumules a travers les
-journees dans league_classement_archive). Ces 4 categories restent dans
+Precious_Count (Gollum, meme raison que Precious ailleurs dans ce projet --
+Precious lui-meme EST porte, cf. core/archive_capture.py, mais pas son
+compteur cumule). Ces 2 categories restent dans
 DEFAULT_GENERAL_BONUS_CATEGORIES (comportement identique a mpg_app) mais
 resteront a 0 pour tout le monde tant que leurs champs sources ne sont pas
 alimentes -- LIMITE CONNUE v1, documentee plutot que masquee.

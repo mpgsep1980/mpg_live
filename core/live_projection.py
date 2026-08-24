@@ -38,6 +38,11 @@ PUBLIC_ROW_FIELDS = (
     "userId", "teamName", "rang", "points", "matches_joues",
     "victoires", "nuls", "defaites", "buts_pour", "buts_contre", "diff",
     "cleanSheet", "manita", "on_fire", "grotaldo", "owngoals", "pichichi", "mur", "boss",
+    # boss_saison/bonus_second/bonus_dernier : PAS internes comme
+    # _bonus_champion/_precious -- lus directement par compute_super_classement
+    # (Multi Boss/La Triplette/Poulidor/La Chèvre operent au niveau Super
+    # Classement -- bonus generaux/inter-ligues -- pas resolve_league_wide_ranks).
+    "boss_saison", "bonus_second", "bonus_dernier",
 )
 
 
@@ -158,6 +163,15 @@ def combined_division_standings(base_by_user: dict, delta_rows: list[dict]) -> l
             "on_fire": base.get("on_fire", 0) + row.get("on_fire", 0),
             "grotaldo": base.get("grotaldo", 0) + row.get("grotaldo", 0),
             "owngoals": base.get("owngoals", 0) + row.get("owngoals", 0),
+            # Ycards/Rcards AJOUTES (retour utilisateur 2026-08-24) -- deja
+            # calcules par aggregate_standings, necessaires pour departager
+            # resolve_league_wide_ranks (meme derniers criteres que le
+            # tri a 6 niveaux de Super_Classement_General_V2.ipynb : des
+            # egalites exactes points/diff/attaque sont frequentes en debut
+            # de saison, trouve via un Podium/Super_Podium visiblement faux
+            # sur 4 managers a egalite parfaite).
+            "Ycards": base.get("Ycards", 0) + row.get("Ycards", 0),
+            "Rcards": base.get("Rcards", 0) + row.get("Rcards", 0),
         })
     return combined
 
@@ -216,8 +230,11 @@ def _rows_from_archive(base_by_user: dict) -> list[dict]:
             "buts_pour": base.get("score+", 0), "buts_contre": base.get("score-", 0),
             "cleanSheet": base.get("cleanSheet", 0), "manita": base.get("manita", 0), "on_fire": base.get("on_fire", 0),
             "grotaldo": base.get("grotaldo", 0), "owngoals": base.get("owngoals", 0),
+            "Ycards": base.get("Ycards", 0), "Rcards": base.get("Rcards", 0),
             "pichichi": base.get("pichichi", 0), "mur": base.get("mur", 0),
             "boss": bool(base.get("bonus_champion", 0) > 0),
+            "boss_saison": base.get("boss_saison", 0),
+            "bonus_second": base.get("bonus_second", 0), "bonus_dernier": base.get("bonus_dernier", 0),
             "points_pond": base.get("points_pond", 0.0),
             "_bonus_champion": base.get("bonus_champion", 0), "_bonus_podium": base.get("bonus_podium", 0),
             "_precious": base.get("precious", 0),
@@ -295,8 +312,11 @@ def resolve_division_rows(league: dict, division_number: int, division_matches: 
                 "buts_pour": row["buts_pour"], "buts_contre": row["buts_contre"],
                 "cleanSheet": row["cleanSheet"], "manita": row["manita"], "on_fire": row["on_fire"],
                 "grotaldo": row["grotaldo"], "owngoals": row["owngoals"],
+                "Ycards": row.get("Ycards", 0), "Rcards": row.get("Rcards", 0),
                 "pichichi": bonus.get("Pichichi", 0), "mur": bonus.get("Le_Mur", 0),
                 "boss": bool(bonus.get("Bonus_Champion", 0) > 0),
+                "boss_saison": next((v for k, v in bonus.items() if "_Boss_Saison_" in k), 0),
+                "bonus_second": bonus.get("Bonus_Second", 0), "bonus_dernier": bonus.get("Bonus_Dernier", 0),
                 "points_pond": row["points_pond"],
                 # Internes -- consommes uniquement par resolve_league_wide_ranks,
                 # jamais publies (cf. finalize_division_data). _precious=0
@@ -348,12 +368,23 @@ def resolve_league_wide_ranks(rows_by_division: dict[int, list[dict]], match_bon
                 + precious_term - grotaldo_term,
                 4,
             )
-            entries.append((row["userId"], points_ligue))
+            diff = (row.get("buts_pour") or 0) - (row.get("buts_contre") or 0)
+            entries.append((
+                row["userId"], points_ligue, diff, row.get("buts_pour") or 0,
+                row.get("Ycards", 0), row.get("Rcards", 0),
+            ))
 
-    entries.sort(key=lambda e: -e[1])
+    # Depart les egalites (frequent en debut de saison -- retour utilisateur
+    # 2026-08-24, trouve via un Podium/Super_Podium visiblement faux : 4
+    # managers a egalite exacte de points_ligue/diff/attaque partaient dans
+    # un ordre arbitraire, dependant de l'ordre d'iteration des divisions,
+    # faute de tiebreak ici). Meme 6 criteres que le tri du Super Classement
+    # officiel (Super_Classement_General_V2.ipynb cellule 3 : points, diff,
+    # buts_pour, buts_contre, Ycards, Rcards -- moins de cartons gagne).
+    entries.sort(key=lambda e: (-e[1], -e[2], -e[3], e[4], e[5]))
     return {
         uid: {"rang_ligue": i, "points_ligue": points_ligue}
-        for i, (uid, points_ligue) in enumerate(entries, start=1)
+        for i, (uid, points_ligue, *_rest) in enumerate(entries, start=1)
     }
 
 
@@ -403,10 +434,26 @@ def compute_super_classement(sb) -> list[dict]:
     Challenge -- 12 sur 16), les 4 autres (La Piñata/Gollum/Poulidor/La
     Chèvre) restent a 0 pour tout le monde -- leurs champs sources ne sont
     pas suivis par le schema Supabase actuel, LIMITE CONNUE v1, a completer
-    separement. Multi Boss n'est pas applique ici non plus (module a part
-    cote mpg_app, pas encore porte). Departage : points seuls (pas le tri a
-    6 criteres de mpg_app -- Ycards/Rcards absents ici, jamais suivis par ce
-    schema).
+    separement.
+
+    Multi Boss / La Triplette / Podium / Super_Podium AJOUTES (retour
+    utilisateur 2026-08-24, "vas-y" -- port de Super_Classement_General_V2.
+    ipynb cellule 6, LDC exclue partout comme dans la source) : Multi Boss
+    (somme des Boss_Saison si champion d'au moins 3 ligues), La Triplette
+    (+10 par tranche de 3 titres Boss_Saison dans UNE MEME ligue -- inerte
+    tant qu'une seule saison est archivee par ligue, aucune donnee
+    multi-saison pour l'instant, redemarrera seul une fois l'historique
+    accumule), Podium (+20/+10/+5 pour rang_ligue 1/2/3), Super_Podium
+    (+10 pour qui a le plus de podiums). La Chèvre (place cote notebook
+    seuille en dur a 48) volontairement PAS portee : 0 point, purement
+    informative, et le seuil ne serait pas fiable sur nos ligues a 72
+    joueurs.
+
+    Departage : points seuls a CE niveau (Super Classement) -- Ycards/Rcards
+    sont bien suivis desormais (retour utilisateur 2026-08-24, meme correctif
+    que ci-dessus), mais uniquement consommes par resolve_league_wide_ranks
+    pour departager rang_ligue/Podium ; pas de second niveau de tri ici,
+    contrairement au tri a 6 criteres du notebook a ce meme etage.
 
     PAS de filtre par "season" ici, volontairement -- deux ligues suivant la
     MEME saison calendaire reelle peuvent avoir des compteurs de saison MPG
@@ -427,23 +474,40 @@ def compute_super_classement(sb) -> list[dict]:
     "canonique" ici -- meilleur choix disponible sans registre managers)."""
     from core.general_bonus import apply_general_bonuses
 
+    leagues_res = sb.table("leagues").select("nom,code").execute()
+    ldc_code = next((r["code"] for r in (leagues_res.data or []) if r["nom"] == "Ligue_des_Champignons"), None)
+
     res = sb.table("division_classement_live").select("league_code,division,data").execute()
     rows = res.data or []
 
     SUM_FIELDS = (
         "score+", "score-", "victory", "draw", "defeat",
         "cleanSheet", "manita", "on_fire", "grotaldo", "owngoals",
+        "Bonus_Second", "Bonus_Dernier",
     )
     ENTRY_FIELD_MAP = {
         "score+": "buts_pour", "score-": "buts_contre", "victory": "victoires",
         "draw": "nuls", "defeat": "defaites",
         "cleanSheet": "cleanSheet", "manita": "manita", "on_fire": "on_fire",
         "grotaldo": "grotaldo", "owngoals": "owngoals",
+        # Bonus_Second/Bonus_Dernier -- active Poulidor/La Chèvre dans
+        # apply_general_bonuses (retour utilisateur 2026-08-24, deja
+        # calcules par compute_internal_bonuses, simplement jamais
+        # surfaces jusqu'ici -- meme cas que Boss_Saison plus haut).
+        "Bonus_Second": "bonus_second", "Bonus_Dernier": "bonus_dernier",
     }
 
     stats_by_user: dict[str, dict] = {}
     best_team_name: dict[str, tuple[float, str]] = {}
+    # {userId: {league_code: valeur}} -- max/min par ligue (une ligue peut
+    # avoir plusieurs divisions, donc plusieurs entrees pour le meme
+    # manager n'arrivent normalement pas, mais max()/min() protegent quand
+    # meme contre un double-compte si jamais).
+    boss_saison_by_user_league: dict[str, dict[str, float]] = {}
+    place_by_user_league: dict[str, dict[str, int]] = {}
+
     for row in rows:
+        league_code = row["league_code"]
         for entry in (row.get("data") or []):
             uid = entry.get("userId")
             if not uid:
@@ -458,8 +522,68 @@ def compute_super_classement(sb) -> list[dict]:
             if points_ligue > current_best[0] and entry.get("teamName"):
                 best_team_name[uid] = (points_ligue, entry["teamName"])
 
+            if league_code != ldc_code:
+                boss_saison = entry.get("boss_saison") or 0
+                if boss_saison:
+                    d = boss_saison_by_user_league.setdefault(uid, {})
+                    d[league_code] = max(d.get(league_code, 0), boss_saison)
+                rang_ligue = entry.get("rang_ligue")
+                if rang_ligue is not None:
+                    d = place_by_user_league.setdefault(uid, {})
+                    d[league_code] = min(d.get(league_code, rang_ligue), rang_ligue)
+
     classement = list(stats_by_user.items())  # [(userId, stats), ...] -- format attendu par apply_general_bonuses
     apply_general_bonuses(classement)
+
+    # Multi Boss / La Triplette -- port de Super_Classement_General_V2.ipynb
+    # cellule 6 ("Verification du Multi Boss"/"Triple Boss"). Un seul
+    # Boss_Saison par (user, ligue) dans nos donnees actuelles (pas
+    # d'historique multi-saison) : La Triplette (>=3 titres dans UNE MEME
+    # ligue) ne peut donc jamais se declencher pour l'instant -- ecrit
+    # quand meme fidelement, redemarrera de lui-meme une fois plusieurs
+    # saisons archivees par ligue.
+    for uid, stats in classement:
+        boss_by_league = boss_saison_by_user_league.get(uid, {})
+        bonus_details = stats["bonus_details"]
+        if len(boss_by_league) >= 3:
+            multi_boss_points = sum(sorted(boss_by_league.values(), reverse=True))
+            stats["points"] += multi_boss_points
+            bonus_details["Multi Boss"] = multi_boss_points
+
+        # Chaque ligue ne contribue qu'UN SEUL titre visible actuellement
+        # (cf. commentaire ci-dessus) -- la ligne ci-dessous reste ecrite
+        # comme le notebook (comptage par cle Boss_Saison) pour rester
+        # correcte le jour ou plusieurs saisons/ligue seront disponibles.
+        ligue_boss_counts: dict[str, int] = {lc: 1 for lc in boss_by_league}
+        triple_boss_points = sum((count // 3) * 10 for count in ligue_boss_counts.values())
+        if triple_boss_points:
+            stats["points"] += triple_boss_points
+            bonus_details["La Triplette"] = triple_boss_points
+
+    # Podium -- +20/+10/+5 pour rang_ligue 1/2/3 (au mieux si un manager
+    # apparait dans plusieurs divisions de la meme ligue, cas normalement
+    # impossible mais protege comme le notebook, qui prend le meilleur
+    # rang connu par ligue).
+    podium_points_map = {1: 20, 2: 10, 3: 5}
+    podium_counts: dict[str, int] = {}
+    for uid, stats in classement:
+        bonus_details = stats["bonus_details"]
+        for league_code, place in place_by_user_league.get(uid, {}).items():
+            points = podium_points_map.get(place)
+            if points is None:
+                continue
+            bonus_details[f"{league_code}_Podium_{place:02d}"] = points
+            stats["points"] += points
+            podium_counts[uid] = podium_counts.get(uid, 0) + 1
+
+    # Super_Podium -- +10 pour qui cumule le plus de podiums (toutes ligues
+    # confondues), tous ex-aequo recompenses comme le notebook.
+    max_podiums = max(podium_counts.values(), default=0)
+    if max_podiums > 0:
+        for uid, stats in classement:
+            if podium_counts.get(uid, 0) == max_podiums:
+                stats["points"] += 10
+                stats["bonus_details"]["Super_Podium"] = 10
 
     ranked = sorted(classement, key=lambda kv: -kv[1]["points"])
     return [

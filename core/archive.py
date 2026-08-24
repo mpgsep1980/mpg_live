@@ -67,9 +67,25 @@ def _stats_from_row(row: dict, precious_holder_user_id: str | None = None) -> di
         "points_pond": row["points_pond"],
         "cleanSheet": row["cleanSheet"], "manita": row["manita"], "on_fire": row["on_fire"],
         "grotaldo": row["grotaldo"], "owngoals": row["owngoals"],
+        "Ycards": row.get("Ycards", 0), "Rcards": row.get("Rcards", 0),
         "pichichi": bonus.get("Pichichi", 0), "mur": bonus.get("Le_Mur", 0),
         "bonus_champion": bonus.get("Bonus_Champion", 0), "bonus_podium": bonus.get("Bonus_Podium", 0),
+        # Bonus_Second/Bonus_Dernier -- meme cas que Boss_Saison ci-dessous :
+        # deja calcules par compute_internal_bonuses, jamais surfaces avant
+        # ce correctif (retour utilisateur 2026-08-24) -- necessaires pour
+        # activer Poulidor/La Chèvre dans les bonus generaux (cf.
+        # core/general_bonus.py, compute_super_classement).
+        "bonus_second": bonus.get("Bonus_Second", 0), "bonus_dernier": bonus.get("Bonus_Dernier", 0),
         "precious": 1 if precious_holder_user_id and row["userId"] == precious_holder_user_id else 0,
+        # Boss_Saison -- deja calcule par compute_internal_bonuses (cle
+        # "{league_name}_Boss_Saison_{season_number}", jamais surfacee
+        # jusqu'ici) : necessaire pour Multi Boss/La Triplette au niveau du
+        # Super Classement (retour utilisateur 2026-08-24, meme retrouve
+        # dans Super_Classement_General_V2.ipynb cellule 6). Recherche par
+        # sous-chaine plutot que cle exacte : _stats_from_row ne connait ni
+        # league_name ni season_number, et un seul "_Boss_Saison_" peut
+        # exister par appel (une ligue/saison a la fois).
+        "boss_saison": next((v for k, v in bonus.items() if "_Boss_Saison_" in k), 0),
     }
 
 
