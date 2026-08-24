@@ -20,9 +20,12 @@ de classement/bonus cote client.
 import time
 
 from core.api import get_division_calendar
+from core.archive_capture import RAW_BONUS_TO_DTC_KEY
 from core.league import get_scoring_config, get_internal_bonus_config, get_match_bonus_config
 from core.scoring import compute_matchday_standings, aggregate_standings
 from core.internal_bonus import compute_internal_bonuses
+
+DTC_KEYS = tuple(RAW_BONUS_TO_DTC_KEY.values())
 
 LIVE_COUNTER_KEYS = ("cleanSheet", "manita", "on_fire")
 
@@ -43,6 +46,7 @@ PUBLIC_ROW_FIELDS = (
     # (Multi Boss/La Triplette/Poulidor/La Chèvre operent au niveau Super
     # Classement -- bonus generaux/inter-ligues -- pas resolve_league_wide_ranks).
     "boss_saison", "bonus_second", "bonus_dernier", "precious_count",
+    *DTC_KEYS,
 )
 
 
@@ -236,6 +240,7 @@ def _rows_from_archive(base_by_user: dict) -> list[dict]:
             "boss_saison": base.get("boss_saison", 0),
             "bonus_second": base.get("bonus_second", 0), "bonus_dernier": base.get("bonus_dernier", 0),
             "precious_count": base.get("precious_count", 0),
+            **{key: base.get(key, 0) for key in DTC_KEYS},
             "points_pond": base.get("points_pond", 0.0),
             "_bonus_champion": base.get("bonus_champion", 0), "_bonus_podium": base.get("bonus_podium", 0),
             "_precious": base.get("precious", 0),
@@ -323,6 +328,11 @@ def resolve_division_rows(league: dict, division_number: int, division_matches: 
                 # _precious=0 plus bas) -- reporte tel quel depuis la
                 # derniere archive, incremente seulement dans core/archive.py.
                 "precious_count": base_by_user.get(row["userId"], {}).get("precious_count", 0),
+                # *_DTC (La Piñata) : meme raison que precious_count --
+                # jamais recompte EN COURS de journee (core/archive_capture.py
+                # ::dtc_counts_from_matches n'est appele qu'a l'archivage),
+                # reporte tel quel.
+                **{key: base_by_user.get(row["userId"], {}).get(key, 0) for key in DTC_KEYS},
                 "points_pond": row["points_pond"],
                 # Internes -- consommes uniquement par resolve_league_wide_ranks,
                 # jamais publies (cf. finalize_division_data). _precious=0
@@ -490,6 +500,7 @@ def compute_super_classement(sb) -> list[dict]:
         "score+", "score-", "victory", "draw", "defeat",
         "cleanSheet", "manita", "on_fire", "grotaldo", "owngoals",
         "Bonus_Second", "Bonus_Dernier", "Precious_Count",
+        *DTC_KEYS,
     )
     ENTRY_FIELD_MAP = {
         "score+": "buts_pour", "score-": "buts_contre", "victory": "victoires",
@@ -504,11 +515,14 @@ def compute_super_classement(sb) -> list[dict]:
         # Precious_Count -- active Gollum (cumul saison du detenteur du
         # Precieux, PAS juste le detenteur actuel -- cf. Corrections_pour_
         # Sep.md section B3, retour utilisateur 2026-08-24 "documente dans
-        # le Git avec Ilan"). La Piñata (PinataScore/*_DTC) reste hors
-        # scope : ces compteurs proviennent d'un pipeline legacy
-        # (Parsed/Scores.json) sans equivalent identifie cote mpg_live --
-        # PAS reconstruit ici plutot que d'improviser une regle non verifiee.
+        # le Git avec Ilan").
         "Precious_Count": "precious_count",
+        # *_DTC (8 compteurs) -- active La Piñata (retour utilisateur
+        # 2026-08-24, meme reconstruction que mpg_app/backfill_historical_
+        # season.py::bonuses_subis_from_match, cf. core/archive_capture.py::
+        # dtc_counts_from_matches) -- PinataScore precalcule juste avant
+        # apply_general_bonuses ci-dessous, meme cle par cle que le reste.
+        **{key: key for key in DTC_KEYS},
     }
 
     stats_by_user: dict[str, dict] = {}
@@ -545,6 +559,10 @@ def compute_super_classement(sb) -> list[dict]:
                 if rang_ligue is not None:
                     d = place_by_user_league.setdefault(uid, {})
                     d[league_code] = min(d.get(league_code, rang_ligue), rang_ligue)
+
+    from core.general_bonus import compute_pinata_score
+    for stats in stats_by_user.values():
+        stats["PinataScore"] = compute_pinata_score(stats)
 
     classement = list(stats_by_user.items())  # [(userId, stats), ...] -- format attendu par apply_general_bonuses
     apply_general_bonuses(classement)

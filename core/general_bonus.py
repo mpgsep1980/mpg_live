@@ -3,15 +3,17 @@ Bonus "generaux" (inter-ligues) appliques au Super Classement -- fusion de
 toutes les ligues par manager (cf. core/live_projection.py::
 compute_super_classement).
 
-Port PARTIEL de mpg_app/core/general_bonus.py (retour utilisateur
-2026-08-23, "on y va etape par etape") -- apply_general_bonuses et
-DEFAULT_GENERAL_BONUS_CATEGORIES sont copies VERBATIM (memes 16 entrees,
-memes points/directions) : la fonction degrade deja proprement toute seule
-si la cle source d'une categorie est absente de tous les managers (aucune
-valeur trouvee -> extreme=None -> bonus_details[name]=0 pour tout le monde,
-jamais d'erreur) -- inutile de retirer les categories dont la source
-manque encore, elles s'activeront automatiquement le jour ou leur champ
-sera ajoute au schema.
+Port de mpg_app/core/general_bonus.py -- apply_general_bonuses et
+DEFAULT_GENERAL_BONUS_CATEGORIES copies VERBATIM (memes 16 entrees, memes
+points/directions). Les 16 categories sont maintenant TOUTES alimentees
+par une source reelle (retour utilisateur 2026-08-23 → 2026-08-24, "on y
+va etape par etape" puis "vas-y" -- Boss_Saison/Bonus_Second/Bonus_Dernier/
+Precious_Count/*_DTC portes un par un) -- plusieurs valent volontairement
+0 point par regle officielle MPG (Winner, Pétard Mouillé, Passoire, FFL,
+Macroniste, Harry Maguire Challenge, La Chèvre), pas par source manquante.
+La fonction degrade quand meme proprement si une cle venait a manquer un
+jour (extreme=None -> bonus_details[name]=0 pour tout le monde, jamais
+d'erreur).
 
 Poulidor/La Chèvre ACTIVES depuis le retour utilisateur 2026-08-24 ("vas-y",
 comparaison contre Super_Classement_General_V2.ipynb) : Bonus_Second/
@@ -20,14 +22,15 @@ compute_internal_bonuses, simplement jamais surfaces jusqu'a
 core/archive.py::_stats_from_row -- meme cle brute, aucune nouvelle
 logique.
 
-Restent PAS portees : PinataScore/PINATA_DTC_WEIGHTS/compute_pinata_score
-(La Piñata a besoin de 8 compteurs *_DTC, aucune source Supabase en v1),
-Precious_Count (Gollum, meme raison que Precious ailleurs dans ce projet --
-Precious lui-meme EST porte, cf. core/archive_capture.py, mais pas son
-compteur cumule). Ces 2 categories restent dans
-DEFAULT_GENERAL_BONUS_CATEGORIES (comportement identique a mpg_app) mais
-resteront a 0 pour tout le monde tant que leurs champs sources ne sont pas
-alimentes -- LIMITE CONNUE v1, documentee plutot que masquee.
+La Piñata ACTIVE depuis le retour utilisateur 2026-08-24 ("La Pinata est
+un cumul du nombre de coups/bonus subis par un meme joueur, ratio 1 pour 1
+sauf Valise a Nanard qui vaut 3 -- en theorie c'est documente") --
+PINATA_DTC_WEIGHTS et compute_pinata_score portes verbatim de mpg_app.
+Les 8 compteurs *_DTC eux-memes sont reconstruits par core/archive.py
+depuis les matchs bruts (meme logique que mpg_app/backfill_historical_
+season.py::bonuses_subis_from_match -- lit match[cote]["bonuses"], compte
+1 par coup SUBI par cote adverse, plafonne a 1/match/coup) plutot que lus
+d'un pipeline "Parsed" legacy sans equivalent Supabase.
 
 Config editable non portee ici (load/save_general_bonus_config lisaient un
 fichier JSON local cote mpg_app) -- DEFAULT_GENERAL_BONUS_CATEGORIES sert
@@ -52,6 +55,29 @@ DEFAULT_GENERAL_BONUS_CATEGORIES = [
     {"name": "Poulidor", "key": "Bonus_Second", "direction": "max", "points": 5, "require_positive": False, "enabled": True},
     {"name": "La Chèvre", "key": "Bonus_Dernier", "direction": "max", "points": 0, "require_positive": False, "enabled": True},
 ]
+
+
+# Port verbatim de mpg_app/core/general_bonus.py -- ponderation des 8
+# compteurs *_DTC (coups SUBIS, cf. core/archive.py::_dtc_counts_from_matches
+# pour leur reconstruction depuis les matchs bruts). Valise a Nanard compte
+# triple (retour utilisateur 2026-08-24), les 7 autres comptent 1 pour 1.
+PINATA_DTC_WEIGHTS = {
+    "zahia_DTC": 1,
+    "mcdo_DTC": 1,
+    "suarez_DTC": 1,
+    "cheatCode_DTC": 1,
+    "nanard_DTC": 3,      # Valise a Nanard -- compte triple
+    "tontonPat_DTC": 1,
+    "mirror_DTC": 1,
+    "QuatDecat_DTC": 1,
+}
+
+
+def compute_pinata_score(stats: dict) -> float:
+    """Somme ponderee des 8 compteurs *_DTC -- a appeler pour CHAQUE manager
+    du Super Classement fusionne, AVANT apply_general_bonuses (qui lit
+    ensuite stats["PinataScore"] comme n'importe quelle autre cle)."""
+    return sum(stats.get(key, 0) * weight for key, weight in PINATA_DTC_WEIGHTS.items())
 
 
 def apply_general_bonuses(classement: list, categories: list[dict] | None = None) -> list:

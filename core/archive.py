@@ -30,15 +30,20 @@ archivees par-dessus.
 """
 from datetime import datetime, timezone
 
-from core.archive_capture import capture_division_journee
+from core.archive_capture import capture_division_journee, dtc_counts_from_matches, RAW_BONUS_TO_DTC_KEY
 from core.live_scoring import all_division_matches_final
 from core.internal_bonus import compute_internal_bonuses
 from core.live_projection import (
     is_gameweek_archived, division_delta, combined_division_standings, league_setup,
 )
 
+DTC_KEYS = tuple(RAW_BONUS_TO_DTC_KEY.values())
 
-def _stats_from_row(row: dict, precious_holder_user_id: str | None = None, previous_precious_count: int = 0) -> dict:
+
+def _stats_from_row(
+    row: dict, precious_holder_user_id: str | None = None, previous_precious_count: int = 0,
+    previous_dtc: dict | None = None, dtc_this_gameweek: dict | None = None,
+) -> dict:
     """Convertit une ligne de sortie de combined_division_standings (cles
     buts_pour/buts_contre/victory/...) vers la forme stockee en base
     (score+/score-/victory/..., cf. db/schema.sql) -- la meme forme que
@@ -100,6 +105,15 @@ def _stats_from_row(row: dict, precious_holder_user_id: str | None = None, previ
         # league_name ni season_number, et un seul "_Boss_Saison_" peut
         # exister par appel (une ligue/saison a la fois).
         "boss_saison": next((v for k, v in bonus.items() if "_Boss_Saison_" in k), 0),
+        # *_DTC (8 compteurs, La Piñata) -- meme principe cumulatif que
+        # precious_count : base (previous_dtc) + delta de cette seule
+        # journee (dtc_this_gameweek, cf. core/archive_capture.py::
+        # dtc_counts_from_matches, retour utilisateur 2026-08-24, "cumul du
+        # nombre de coups/bonus subis... en theorie c'est documente").
+        **{
+            key: (previous_dtc or {}).get(key, 0) + (dtc_this_gameweek or {}).get(key, 0)
+            for key in DTC_KEYS
+        },
     }
 
 
@@ -154,13 +168,17 @@ def archive_closed_gameweek_if_needed(sb, league: dict, closed_game_week: int, t
             setup["league_size"], setup["season_number"], setup["season_start"], league["nom"],
             setup["internal_cfg"], division_matches=division_matches,
         )
+        dtc_by_user = dtc_counts_from_matches(division_matches)
 
         for row in combined:
-            previous_precious_count = base_by_user.get(row["userId"], {}).get("precious_count", 0)
+            previous = base_by_user.get(row["userId"], {})
             sb.table("league_classement_archive").upsert({
                 "league_code": short_id, "season": season, "division": division,
                 "user_id": row["userId"],
-                "stats": _stats_from_row(row, precious_holder_user_id, previous_precious_count),
+                "stats": _stats_from_row(
+                    row, precious_holder_user_id, previous.get("precious_count", 0),
+                    previous, dtc_by_user.get(row["userId"]),
+                ),
                 "updated_at": now,
             }).execute()
         done += 1
@@ -213,9 +231,11 @@ def rebuild_division_archive(sb, league: dict, division: int, total_divisions: i
             setup["league_size"], setup["season_number"], setup["season_start"], league["nom"],
             setup["internal_cfg"], division_matches=division_matches,
         )
+        dtc_by_user = dtc_counts_from_matches(division_matches)
         base_by_user = {
             row["userId"]: _stats_from_row(
                 row, precious_holder_user_id, base_by_user.get(row["userId"], {}).get("precious_count", 0),
+                base_by_user.get(row["userId"], {}), dtc_by_user.get(row["userId"]),
             )
             for row in combined_rows
         }
