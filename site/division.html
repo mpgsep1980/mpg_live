@@ -68,6 +68,7 @@
   .sim-result .side.me .total { color: var(--mpg-action); }
   .sim-result .total { font-size: 1.6rem; font-weight: 700; }
   .sim-result .label { font-size: 0.75rem; color: var(--mpg-text-soft); }
+  .sweep-bad { color: var(--mpg-danger); font-weight: 600; }
 
   /* --- Empilement mobile plutot que scroll horizontal (charte section 5) --- */
   @media (max-width: 640px) {
@@ -95,7 +96,7 @@
 <div class="controls mpg-no-print">
   <label>Ligue<select id="leagueCode"></select></label>
   <label>Division<select id="division"></select></label>
-  <label>userId (Ma situation)<input id="userId" placeholder="user_..." style="width:10em"></label>
+  <label>Manager (Ma situation)<select id="userId" style="min-width:12em"><option value="">— Ma situation (optionnel) —</option></select></label>
   <button id="load-btn">Charger</button>
 </div>
 
@@ -174,39 +175,82 @@
 
   // Simulateur de bonus (retour utilisateur 2026-08-24, "on permettra aux
   // managers de faire des simulations de situations selon les bonus mis ou
-  // non, comme developpe avec lancer_live.bat") -- appelle la fonction
-  // cloud simulate_api/app.py (port de admin_server.py::api_simulate_my_
-  // bonus), qui reutilise core/live_scoring.py tel quel. Aucune logique de
-  // scoring dupliquee ici, juste l'appel + l'affichage du resultat.
+  // non", puis "regarde bien ce qui a deja ete fait ... tout est
+  // disponible, il faut que tu branches tout") -- port de admin/manager.html
+  // (mpg_app), memes constantes/logique, adapte a la fonction cloud
+  // simulate_api/app.py au lieu de l'API locale relative. Deux volets :
+  // "Mon Bonus" (choix manuel, simulate-bonus) et "Bonus Adverse -- etat
+  // des lieux" (balayage automatique de TOUS les bonus possibles pour la
+  // taille de division, live-scenario-sweep).
   const SIMULATE_API_BASE = "https://mpg-live.onrender.com";
-  const BONUS_LABELS = {
-    "boostAllPlayers": "Zahia",
-    "boostOnePlayer": "McDo+",
-    "nerfGoalkeeper": "Suarez",
-    "nerfAllPlayers": "Cheat Code",
-    "blockTacticalSubs": "Tonton Pat'",
-    "removeGoal": "Valise à Nanard",
-    "mirror": "Miroir",
+
+  const BONUS_OPTIONS = [
+    { value: "", label: "Aucun" },
+    { value: "boostAllPlayers", label: "Zahia (+0,5 à tous)" },
+    { value: "boostOnePlayer", label: "McDo+ (+1 à un titu)" },
+    { value: "nerfGoalkeeper", label: "Suarez (-1 gardien)" },
+    { value: "nerfAllPlayers", label: "Cheat Code (-0,5 adverses)" },
+    { value: "blockTacticalSubs", label: "Tonton Pat' (bloque tactiques adv.)" },
+    { value: "removeGoal", label: "Valise à Nanard (annule 1 but adv.)" },
+    { value: "mirror", label: "Miroir (renvoie/vole le coup adv.)" },
+  ];
+  // Taille de division MINIMALE a partir de laquelle chaque bonus existe --
+  // tableau officiel MPG, miroir de core.live_scoring.BONUS_MIN_DIVISION_SIZE
+  // (garder les deux synchronises).
+  const BONUS_MIN_DIVISION_SIZE = {
+    removeGoal: 4, boostOnePlayer: 4,
+    nerfGoalkeeper: 6, boostAllPlayers: 6, mirror: 6,
+    nerfAllPlayers: 8, blockTacticalSubs: 8,
   };
-  const bonusOptionsHtml = () =>
-    `<option value="">Aucun</option>` +
-    Object.entries(BONUS_LABELS).map(([key, label]) => `<option value="${key}">${label}</option>`).join("");
+  // Seul boostOnePlayer (McDo+) a besoin d'une cible choisie a la main, et
+  // cette cible est TOUJOURS un joueur de SA PROPRE equipe (auto-buff, pas
+  // un joueur adverse) -- Miroir peut voler le McDo+ adverse automatiquement
+  // (meme slot), pas de selection manuelle a prevoir pour ca.
+  const BONUS_NEEDS_TARGET = new Set(["boostOnePlayer"]);
+
+  function bonusOptionsForDivisionSize(divisionSize) {
+    return BONUS_OPTIONS.filter(o => !o.value || divisionSize >= (BONUS_MIN_DIVISION_SIZE[o.value] || 0));
+  }
+  function optionsHtml(options, selectedValue) {
+    return options.map(o => `<option value="${o.value}"${o.value === (selectedValue || "") ? " selected" : ""}>${o.label}</option>`).join("");
+  }
+  function targetOptionsHtml(list, selectedId) {
+    return list.map(p => `<option value="${p.id}"${p.id === selectedId ? " selected" : ""}>${p.name}</option>`).join("");
+  }
+  // Port de targetSelectHtml (admin/manager.html) -- la cible est TOUJOURS
+  // MA PROPRE equipe (myTeam), jamais celle de l'adversaire (cf. BONUS_NEEDS_
+  // TARGET ci-dessus). Inclut les titulaires deja remplaces mais dont le
+  // vrai match n'a pas encore demarre (is_default_rating) dans un groupe a
+  // part -- on peut encore tester "et si j'avais mis McDo+ sur LUI" tant que
+  // son vrai match n'est pas joue, meme s'il a deja ete sorti tactiquement.
+  function targetSelectHtml(myTeam, selectedId, hidden) {
+    const players = Object.entries(myTeam.players || {})
+      .filter(([, p]) => p.position !== 1) // jamais le gardien, cf. reglement MPG
+      .map(([id, p]) => ({ id, name: p.name }));
+    const outPlayers = (myTeam.out || [])
+      .filter(p => p.is_default_rating)
+      .map(p => ({ id: p.playerId, name: p.name }));
+    const outGroup = outPlayers.length
+      ? `<optgroup label="Déjà remplacés (vrai match pas encore joué)">${targetOptionsHtml(outPlayers, selectedId)}</optgroup>`
+      : "";
+    return `<select id="sim-target-player" style="${hidden ? "display:none" : ""}"><option value="">— choisir le titu —</option>${targetOptionsHtml(players, selectedId)}${outGroup}</select>`;
+  }
 
   function simulatorHtml(entry, leagueCode, division, gameWeek) {
     if (!entry) return "";
     return `
       <div class="sim-card">
         <h2>Simulateur de bonus</h2>
-        <p class="meta">Journée ${gameWeek} -- teste "et si je joue tel coup / mon adversaire joue tel autre",
-        sans rien changer sur MPG. Surtout utile pendant une journée en direct.</p>
+        <p class="meta">Journée ${gameWeek} -- teste "et si je joue tel coup", et l'état des lieux
+        de tous les coups adverses possibles, sans rien changer sur MPG. Surtout utile en direct.</p>
         <div class="sim-row">
-          <label>Mon coup<select id="sim-own-bonus">${bonusOptionsHtml()}</select></label>
-          <label>ID joueur ciblé (McDo+, optionnel)<input id="sim-target-player" placeholder="mpg_championship_player_..." style="width:16em"></label>
-          <label>Coup de l'adversaire<select id="sim-opponent-bonus">${bonusOptionsHtml()}</select></label>
+          <label>Mon coup<select id="sim-own-bonus">${optionsHtml(BONUS_OPTIONS, "")}</select></label>
+          <span id="sim-target-wrap"></span>
           <button id="sim-run-btn">Simuler</button>
         </div>
-        <div id="sim-status" class="status-msg"></div>
+        <div id="sim-status" class="status-msg">Chargement des compositions...</div>
         <div id="sim-result"></div>
+        <div id="sweep-panel"></div>
       </div>`;
   }
 
@@ -227,28 +271,153 @@
       </div>`;
   }
 
+  // --- "Bonus Adverse -- etat des lieux" (port de sweepTableHtml/oddsBarHtml) ---
+  function classifyResult(myScore, theirScore) {
+    if (myScore > theirScore) return "win";
+    if (myScore < theirScore) return "loss";
+    return "draw";
+  }
+  function computeOutcomeOdds(data) {
+    const rowsByType = {};
+    for (const s of data.scenarios) (rowsByType[s.opponentBonus] ||= []).push(s);
+    const weights = { win: 0, draw: 0, loss: 0 };
+    weights[classifyResult(data.baseline.myScore, data.baseline.theirScore)] += 1;
+    let typeCount = 1;
+    Object.values(rowsByType).forEach(rows => {
+      typeCount += 1;
+      const share = 1 / rows.length;
+      rows.forEach(r => { weights[classifyResult(r.myScore, r.theirScore)] += share; });
+    });
+    return {
+      win: Math.round((weights.win / typeCount) * 100),
+      draw: Math.round((weights.draw / typeCount) * 100),
+      loss: Math.round((weights.loss / typeCount) * 100),
+      total: typeCount,
+    };
+  }
+  function oddsBarHtml(data) {
+    const odds = computeOutcomeOdds(data);
+    const seg = (tone, pct) => pct > 0 ? `<span class="mpg-tag mpg-tag-${tone}" style="flex:${pct}">${pct}%</span>` : "";
+    return `
+      <p class="meta" style="margin:0.75rem 0 0.25rem;">Chances de résultat (à l'instant T)</p>
+      <div style="display:flex; gap:0.25rem;">
+        ${seg("success", odds.win)}${seg("steel", odds.draw)}${seg("danger", odds.loss)}
+      </div>
+      <p class="meta">Victoire ${odds.win}% · Nul ${odds.draw}% · Défaite ${odds.loss}% -- état actuel + 1 poids par type de bonus adverse possible (${odds.total} au total).</p>`;
+  }
+  function swingText(row) {
+    const swing = row.deltaMine - row.deltaTheirs;
+    if (swing === 0) return "=";
+    return swing > 0 ? `+${swing}` : `${swing}`;
+  }
+  function sweepTableHtml(data, isHome) {
+    const rows = data.scenarios.map(s => {
+      const homeScore = isHome ? s.myScore : s.theirScore;
+      const awayScore = isHome ? s.theirScore : s.myScore;
+      const swing = s.deltaMine - s.deltaTheirs;
+      const swingClass = swing < 0 ? "sweep-bad" : "";
+      return `
+        <tr>
+          <td title="${s.label}">${s.label}</td>
+          <td class="num">${homeScore}</td>
+          <td class="num">${awayScore}</td>
+          <td class="num ${swingClass}">${swingText(s)}</td>
+        </tr>`;
+    }).join("");
+    return `
+      ${oddsBarHtml(data)}
+      <div class="table-wrap">
+        <table class="mpg-table">
+          <thead><tr><th></th><th class="num">Domicile</th><th class="num">Extérieur</th><th class="num">Δ</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <p class="meta">Δ = évolution de la différence de buts en ma faveur si l'adversaire joue ce bonus (négatif = mauvais pour moi).</p>`;
+  }
+
+  async function runSweep(leagueCode, division, gameWeek, userId, ownBonus, targetPlayerId, isHome) {
+    const sweepEl = document.getElementById("sweep-panel");
+    sweepEl.innerHTML = `<p class="meta">Bonus adverse -- état des lieux : analyse en cours...</p>`;
+    try {
+      const url = new URL(`${SIMULATE_API_BASE}/live-scenario-sweep`);
+      url.searchParams.set("shortId", leagueCode);
+      url.searchParams.set("season", leaguesByCode[leagueCode].season_search);
+      url.searchParams.set("division", division);
+      url.searchParams.set("gameweek", gameWeek);
+      url.searchParams.set("userId", userId);
+      if (ownBonus) url.searchParams.set("ownBonus", ownBonus);
+      if (targetPlayerId) url.searchParams.set("targetPlayerId", targetPlayerId);
+
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      sweepEl.innerHTML = `<h3 style="font-size:0.9rem;">Bonus adverse -- état des lieux</h3>` + sweepTableHtml(data, isHome);
+    } catch (e) {
+      sweepEl.innerHTML = `<p class="status-msg err">Bonus adverse indisponible (${e.message}).</p>`;
+    }
+  }
+
+  let lastBaselineMatch = null;
+
+  function updateTargetVisibility(myUserId) {
+    const ownBonus = document.getElementById("sim-own-bonus").value;
+    const wrap = document.getElementById("sim-target-wrap");
+    if (!lastBaselineMatch) { wrap.innerHTML = ""; return; }
+    const meIsHome = lastBaselineMatch.home.userId === myUserId;
+    const myTeam = meIsHome ? lastBaselineMatch.home : lastBaselineMatch.away;
+    const hidden = !BONUS_NEEDS_TARGET.has(ownBonus);
+    wrap.innerHTML = `<label>Cible (McDo+)${targetSelectHtml(myTeam, "", hidden)}</label>`;
+  }
+
+  async function initSimulator(leagueCode, division, gameWeek, userId, divisionSize) {
+    const statusEl = document.getElementById("sim-status");
+    const ownSelect = document.getElementById("sim-own-bonus");
+    ownSelect.innerHTML = optionsHtml(bonusOptionsForDivisionSize(divisionSize), "");
+    ownSelect.addEventListener("change", () => updateTargetVisibility(userId));
+
+    try {
+      const url = new URL(`${SIMULATE_API_BASE}/simulate-bonus`);
+      url.searchParams.set("shortId", leagueCode);
+      url.searchParams.set("season", leaguesByCode[leagueCode].season_search);
+      url.searchParams.set("division", division);
+      url.searchParams.set("gameweek", gameWeek);
+      url.searchParams.set("userId", userId);
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      lastBaselineMatch = data;
+      statusEl.textContent = "";
+      updateTargetVisibility(userId);
+      const meIsHome = data.home.userId === userId;
+      document.getElementById("sweep-panel").innerHTML = "";
+      runSweep(leagueCode, division, gameWeek, userId, "", "", meIsHome);
+    } catch (e) {
+      statusEl.textContent = "Simulateur indisponible pour le moment (" + e.message + "). Le service met parfois jusqu'à 30s à se réveiller.";
+      statusEl.className = "status-msg err";
+    }
+  }
+
   async function simulateBonus(leagueCode, division, gameWeek, userId) {
     const statusEl = document.getElementById("sim-status");
     const resultEl = document.getElementById("sim-result");
     const ownBonus = document.getElementById("sim-own-bonus").value;
-    const targetPlayerId = document.getElementById("sim-target-player").value.trim();
-    const opponentBonus = document.getElementById("sim-opponent-bonus").value;
+    const targetSelect = document.getElementById("sim-target-player");
+    const targetPlayerId = targetSelect ? targetSelect.value : "";
 
-    statusEl.textContent = "Simulation en cours... (jusqu'à 30s si le service se réveille)";
+    statusEl.textContent = "Simulation en cours...";
     statusEl.className = "status-msg";
     resultEl.innerHTML = "";
 
-    const url = new URL(`${SIMULATE_API_BASE}/simulate-bonus`);
-    url.searchParams.set("shortId", leagueCode);
-    url.searchParams.set("season", leaguesByCode[leagueCode].season_search);
-    url.searchParams.set("division", division);
-    url.searchParams.set("gameweek", gameWeek);
-    url.searchParams.set("userId", userId);
-    if (ownBonus) url.searchParams.set("ownBonus", ownBonus);
-    if (targetPlayerId) url.searchParams.set("targetPlayerId", targetPlayerId);
-    if (opponentBonus) url.searchParams.set("opponentBonus", opponentBonus);
-
     try {
+      const url = new URL(`${SIMULATE_API_BASE}/simulate-bonus`);
+      url.searchParams.set("shortId", leagueCode);
+      url.searchParams.set("season", leaguesByCode[leagueCode].season_search);
+      url.searchParams.set("division", division);
+      url.searchParams.set("gameweek", gameWeek);
+      url.searchParams.set("userId", userId);
+      if (ownBonus) url.searchParams.set("ownBonus", ownBonus);
+      if (targetPlayerId) url.searchParams.set("targetPlayerId", targetPlayerId);
+
       const res = await fetch(url);
       const data = await res.json();
       if (!res.ok) {
@@ -257,16 +426,28 @@
         return;
       }
       statusEl.textContent = "";
+      lastBaselineMatch = data;
       resultEl.innerHTML = simResultHtml(data, userId);
+      const meIsHome = data.home.userId === userId;
+      runSweep(leagueCode, division, gameWeek, userId, ownBonus, targetPlayerId, meIsHome);
     } catch (e) {
       statusEl.textContent = "Simulation indisponible pour le moment (" + e.message + ").";
       statusEl.className = "status-msg err";
     }
   }
 
-  for (const [param, id] of [["user", "userId"]]) {
-    const v = params.get(param);
-    if (v) document.getElementById(id).value = v;
+  // Selecteur de manager par VRAI nom (retour utilisateur 2026-08-24, "on
+  // choisit le joueur avec son vrai nom") -- remplace le userId tape a la
+  // main, construit a partir des entries deja chargees + du registre
+  // managers (realNameByUid, cf. loadManagerNames ci-dessus).
+  function populateUserSelect(entries) {
+    const select = document.getElementById("userId");
+    const wanted = select.value || params.get("user") || "";
+    const sorted = [...entries].sort((a, b) =>
+      (realNameByUid[a.userId] || a.teamName || a.userId).localeCompare(realNameByUid[b.userId] || b.teamName || b.userId));
+    select.innerHTML = `<option value="">— Ma situation (optionnel) —</option>` +
+      sorted.map(e => `<option value="${e.userId}">${realNameByUid[e.userId] || e.teamName || e.userId}</option>`).join("");
+    if (wanted && entries.some(e => e.userId === wanted)) select.value = wanted;
   }
 
   const BADGE_TONE = { cs: "success", manita: "fire", onFire: "amber", boss: "gold", pichichi: "violet", mur: "steel" };
@@ -328,7 +509,6 @@
     const leagueCode = document.getElementById("leagueCode").value;
     const league = leaguesByCode[leagueCode];
     const division = Number(document.getElementById("division").value);
-    const userId = document.getElementById("userId").value.trim();
 
     const statusEl = document.getElementById("status");
     const subtitleEl = document.getElementById("subtitle");
@@ -370,6 +550,8 @@
       + `${row.is_live ? " · en direct" : " · dernière journée archivée"} · mis à jour ${new Date(row.updated_at).toLocaleString("fr-FR")}`;
 
     const entries = row.data || [];
+    populateUserSelect(entries);
+    const userId = document.getElementById("userId").value.trim();
     const myEntry = userId ? entries.find(e => e.userId === userId) : null;
     situationEl.innerHTML = situationHtml(myEntry);
     simulatorEl.innerHTML = simulatorHtml(myEntry, leagueCode, division, row.game_week);
@@ -377,6 +559,7 @@
       document.getElementById("sim-run-btn").addEventListener("click", () => {
         simulateBonus(leagueCode, division, row.game_week, userId);
       });
+      initSimulator(leagueCode, division, row.game_week, userId, league.players_per_division);
     }
 
     tableEl.innerHTML = `
@@ -392,6 +575,7 @@
   }
 
   document.getElementById("load-btn").addEventListener("click", load);
+  document.getElementById("userId").addEventListener("change", load);
   await Promise.all([loadLeagueOptions(), loadManagerNames()]);
   load();
 </script>
