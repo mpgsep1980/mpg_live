@@ -44,7 +44,9 @@
   .match-row {
     display: grid; grid-template-columns: 1fr auto 1fr; gap: 0.75rem; align-items: center;
     padding: 0.5rem 0; border-bottom: 0.5px solid var(--mpg-border-soft); font-size: 0.9rem;
+    text-decoration: none; color: inherit; border-radius: var(--mpg-radius-sm);
   }
+  .match-row:hover { background-color: var(--mpg-border-soft); }
   .match-row:last-child { border-bottom: none; }
   .match-team { display: flex; align-items: center; gap: 0.3rem; }
   .match-team.away { justify-content: flex-end; text-align: right; }
@@ -556,24 +558,31 @@
   // tick), juste pas encore affichee -- pas de nouvelle table necessaire.
   // Les noms d'equipe viennent de division_classement_live.data (deja
   // charge par load()), live_snapshots lui-meme n'a que userId/score.
-  function matchRowHtml(match, teamNameByUserId, myUserId) {
+  // Chaque ligne renvoie vers match.html (detail complet : compos, buts
+  // reels/MPG/CSC, simulateur de bonus branche sur ce match precis) --
+  // retour utilisateur 2026-08-24, "je dois pouvoir avoir acces aux
+  // matchs + la possibilite des bonus, les buts MPG etc". Un seul userId
+  // ancre suffit (?user=), simulate_api/app.py resout les DEUX equipes du
+  // match a partir de lui.
+  function matchRowHtml(match, teamNameByUserId, myUserId, leagueCode, division, gameWeek) {
     const homeName = realNameByUid[match.home.userId] || teamNameByUserId[match.home.userId] || match.home.userId;
     const awayName = realNameByUid[match.away.userId] || teamNameByUserId[match.away.userId] || match.away.userId;
     const isMe = match.home.userId === myUserId || match.away.userId === myUserId;
+    const href = `match.html?ligue=${leagueCode}&division=${division}&gameweek=${gameWeek}&user=${match.home.userId}`;
     return `
-      <div class="match-row${isMe ? " mpg-row-selected" : ""}">
+      <a class="match-row${isMe ? " mpg-row-selected" : ""}" href="${href}">
         <div class="match-team">${match.home.userId === myUserId ? "★ " : ""}${homeName}</div>
         <div class="match-score">${fmt(match.home.score)} – ${fmt(match.away.score)}</div>
         <div class="match-team away">${awayName}${match.away.userId === myUserId ? " ★" : ""}</div>
-      </div>`;
+      </a>`;
   }
 
-  function matchesHtml(matches, teamNameByUserId, myUserId) {
+  function matchesHtml(matches, teamNameByUserId, myUserId, leagueCode, division, gameWeek) {
     if (!matches.length) return "";
     return `
       <div class="matches-card">
         <h2>Résultats de la journée</h2>
-        ${matches.map(m => matchRowHtml(m, teamNameByUserId, myUserId)).join("")}
+        ${matches.map(m => matchRowHtml(m, teamNameByUserId, myUserId, leagueCode, division, gameWeek)).join("")}
       </div>`;
   }
 
@@ -672,7 +681,7 @@
       .limit(1);
     const matches = (snapshotRows && snapshotRows[0] && snapshotRows[0].data) || [];
     const teamNameByUserId = Object.fromEntries(entries.map(e => [e.userId, e.teamName]));
-    matchesEl.innerHTML = matchesHtml(matches, teamNameByUserId, userId);
+    matchesEl.innerHTML = matchesHtml(matches, teamNameByUserId, userId, leagueCode, division, row.game_week);
   }
 
   document.getElementById("userId").addEventListener("change", load);

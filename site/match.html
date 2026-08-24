@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MPG Live -- Match</title>
+<link rel="stylesheet" href="mpg-tokens.css">
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: var(--mpg-title); }
+  h1 { font-size: 1.4rem; margin: 0 0 0.25rem; }
+  .meta { color: var(--mpg-text-soft); font-size: 0.85rem; }
+  .back-link { font-size: 0.85rem; }
+
+  /* --- En-tete du match --- */
+  .match-header {
+    display: grid; grid-template-columns: 1fr auto 1fr; gap: 1rem; align-items: center;
+    border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); padding: 1rem 1.25rem; margin: 1rem 0;
+  }
+  .match-header .team-name { font-weight: 700; font-size: 1.05rem; }
+  .match-header .team.away { text-align: right; }
+  .match-header .score { font-size: 1.6rem; font-weight: 700; text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .match-header .meta { text-align: center; }
+
+  /* --- Compositions --- */
+  .lineups { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+  @media (max-width: 640px) { .lineups { grid-template-columns: 1fr; } }
+  .team-column { border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); padding: 1rem 1.25rem; }
+  .team-column h2 { margin: 0 0 0.5rem; font-size: 1rem; }
+  .team-column h3 { margin: 1rem 0 0.4rem; font-size: 0.8rem; color: var(--mpg-text-soft); text-transform: uppercase; letter-spacing: 0.02em; }
+  .player-row { display: grid; grid-template-columns: 1.5rem 1fr auto auto; gap: 0.5rem; align-items: center; padding: 0.2rem 0; font-size: 0.88rem; }
+  .player-row .pos { color: var(--mpg-text-soft); font-size: 0.75rem; font-weight: 600; }
+  .player-row .pnote { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 2.2em; text-align: right; }
+  .player-row.bench-row .pname, .player-row.bench-row .pnote { color: var(--mpg-text-soft); }
+  .goal-group { font-size: 0.85rem; margin: 0.25rem 0; }
+  .goal-group .none { color: var(--mpg-text-soft); font-size: 0.8rem; }
+
+  /* --- Simulateur (port de division.html) --- */
+  .sim-card { border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); padding: 1rem 1.25rem; margin: 1rem 0; }
+  .sim-card h2 { margin: 0 0 0.25rem; font-size: 1rem; }
+  .sim-card .meta { margin: 0 0 0.75rem; }
+  .sim-row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: end; margin-bottom: 0.75rem; }
+  .sim-row label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.75rem; color: var(--mpg-text-soft); }
+  .sim-row select, .sim-row input {
+    border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); padding: 0.4rem 0.5rem;
+    font-size: 0.9rem; font-family: inherit; color: var(--mpg-title); background: var(--mpg-surface, #fff);
+  }
+  .sim-row button {
+    background: var(--mpg-action); color: #fff; border: none; border-radius: var(--mpg-radius);
+    padding: 0.5rem 1rem; font-size: 0.9rem; font-weight: 600; cursor: pointer;
+  }
+  .sim-row button:hover { background: var(--mpg-action-hover); }
+  .sim-result { display: flex; gap: 2rem; flex-wrap: wrap; margin-top: 0.5rem; }
+  .sim-result .side { text-align: center; }
+  .sim-result .side.me .total { color: var(--mpg-action); }
+  .sim-result .total { font-size: 1.6rem; font-weight: 700; }
+  .sim-result .label { font-size: 0.75rem; color: var(--mpg-text-soft); }
+  .sweep-bad { color: var(--mpg-danger); font-weight: 600; }
+
+  .status-msg { color: var(--mpg-text-soft); font-size: 0.9rem; margin: 1rem 0; }
+  .status-msg.err { color: var(--mpg-danger); }
+  .table-wrap { overflow-x: auto; }
+</style>
+</head>
+<body>
+
+<header class="mpg-banner mpg-no-print">
+  <div class="mpg-banner-inner">
+    <a class="mpg-banner-title" href="index.html">MPG Live</a>
+    <nav class="mpg-banner-nav">
+      <a class="mpg-banner-item" href="index.html">Accueil</a>
+      <a class="mpg-banner-item" href="super-classement.html">Super classement</a>
+      <a class="mpg-banner-item" href="ligues.html">Ligues</a>
+      <a class="mpg-banner-item" href="division.html">Divisions</a>
+      <a class="mpg-banner-item" href="trophees.html">Trophées</a>
+    </nav>
+  </div>
+</header>
+<script>
+  for (const a of document.querySelectorAll(".mpg-banner-item")) {
+    if (a.pathname === location.pathname) a.classList.add("is-active");
+  }
+</script>
+
+<p class="back-link mpg-no-print" id="back-link"></p>
+
+<div id="status" class="status-msg">Chargement...</div>
+<div id="match-header"></div>
+<div class="lineups" id="lineups"></div>
+<div id="simulator"></div>
+
+<script type="module">
+  import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+  const SUPABASE_URL = "https://zvmngpoogwjiknqrkjky.supabase.co";
+  const SUPABASE_ANON_KEY = "sb_publishable_YhAD0_spZJF58Dt_TTQplQ_VrFSKRK8";
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const params = new URLSearchParams(location.search);
+
+  // Retour utilisateur 2026-08-24 : "je dois pouvoir avoir acces aux
+  // matchs + la possibilite des bonus, les buts MPG etc" -- detail de
+  // match cliquable depuis "Resultats de la journee" (division.html).
+  // Reutilise TEL QUEL le simulateur de division.html (deja generique par
+  // userId cote simulate_api/app.py, pas de nouveau backend necessaire) --
+  // seul "userId" (l'ancre passee en param) change de sens : ici n'importe
+  // quel des deux managers du match, pas forcement "moi".
+  const leagueCode = params.get("ligue");
+  const division = Number(params.get("division"));
+  const gameWeek = Number(params.get("gameweek"));
+  const anchorUserId = params.get("user");
+
+  document.getElementById("back-link").innerHTML =
+    `<a href="division.html?ligue=${leagueCode}&division=${division}">&larr; Retour au classement de division</a>`;
+
+  const SIMULATE_API_BASE = "https://mpg-live.onrender.com";
+
+  const BONUS_OPTIONS = [
+    { value: "", label: "Aucun" },
+    { value: "boostAllPlayers", label: "Zahia (+0,5 à tous)" },
+    { value: "boostOnePlayer", label: "McDo+ (+1 à un titu)" },
+    { value: "nerfGoalkeeper", label: "Suarez (-1 gardien)" },
+    { value: "nerfAllPlayers", label: "Cheat Code (-0,5 adverses)" },
+    { value: "blockTacticalSubs", label: "Tonton Pat' (bloque tactiques adv.)" },
+    { value: "removeGoal", label: "Valise à Nanard (annule 1 but adv.)" },
+    { value: "mirror", label: "Miroir (renvoie/vole le coup adv.)" },
+  ];
+  const BONUS_MIN_DIVISION_SIZE = {
+    removeGoal: 4, boostOnePlayer: 4,
+    nerfGoalkeeper: 6, boostAllPlayers: 6, mirror: 6,
+    nerfAllPlayers: 8, blockTacticalSubs: 8,
+  };
+  const BONUS_NEEDS_TARGET = new Set(["boostOnePlayer"]);
+
+  function bonusOptionsForDivisionSize(divisionSize) {
+    return BONUS_OPTIONS.filter(o => !o.value || divisionSize >= (BONUS_MIN_DIVISION_SIZE[o.value] || 0));
+  }
+  function optionsHtml(options, selectedValue) {
+    return options.map(o => `<option value="${o.value}"${o.value === (selectedValue || "") ? " selected" : ""}>${o.label}</option>`).join("");
+  }
+  function targetOptionsHtml(list, selectedId) {
+    return list.map(p => `<option value="${p.id}"${p.id === selectedId ? " selected" : ""}>${p.name}</option>`).join("");
+  }
+  function targetSelectHtml(myTeam, selectedId, hidden) {
+    const players = Object.entries(myTeam.players || {})
+      .filter(([, p]) => p.position !== 1)
+      .map(([id, p]) => ({ id, name: p.name }));
+    const outPlayers = (myTeam.out || [])
+      .filter(p => p.is_default_rating)
+      .map(p => ({ id: p.playerId, name: p.name }));
+    const outGroup = outPlayers.length
+      ? `<optgroup label="Déjà remplacés (vrai match pas encore joué)">${targetOptionsHtml(outPlayers, selectedId)}</optgroup>`
+      : "";
+    return `<select id="sim-target-player" style="${hidden ? "display:none" : ""}"><option value="">— choisir le titu —</option>${targetOptionsHtml(players, selectedId)}${outGroup}</select>`;
+  }
+
+  function fmt(n) {
+    if (n === null || n === undefined) return "–";
+    return Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\.0$/, "");
+  }
+
+  const POSITION_LABEL = { 1: "G", 2: "D", 3: "M", 4: "A" };
+
+  function playerRowHtml(player) {
+    const mpgTag = player.but_mpg_bonus ? `<span class="mpg-tag mpg-tag-gold">but MPG</span>` : "";
+    return `
+      <div class="player-row">
+        <span class="pos">${POSITION_LABEL[player.position] || "?"}</span>
+        <span class="pname">${player.name}</span>
+        <span class="pnote">${fmt(player.effective_note)}</span>
+        ${mpgTag}
+      </div>`;
+  }
+
+  function benchRowHtml(player) {
+    const enteredTag = player.entered ? `<span class="mpg-tag mpg-tag-neutral">entré</span>` : "";
+    return `
+      <div class="player-row bench-row">
+        <span class="pos">${POSITION_LABEL[player.position] || "?"}</span>
+        <span class="pname">${player.name}</span>
+        <span class="pnote">${fmt(player.note_finale)}</span>
+        ${enteredTag}
+      </div>`;
+  }
+
+  // Feuille de but -- reel (avec minute), MPG (duel de lignes, pas de
+  // minute), CSC reel et CSC Rotaldo (cf. core/live_scoring.py::
+  // apply_line_battles, goal_events).
+  function goalGroupHtml(team) {
+    const events = team.goal_events || [];
+    const real = events.filter(e => e.type === "real" || e.type === "real_og");
+    const mpg = events.filter(e => e.type === "mpg");
+    const csc = events.filter(e => e.type === "csc");
+    const line = (label, list, withTime) => {
+      if (!list.length) return "";
+      const names = list.map(e => withTime && e.time ? `${e.name} (${e.time})` : e.name).join(", ");
+      return `<div class="goal-group"><strong>${label}</strong> : ${names}</div>`;
+    };
+    const html = line("Buts réels", real, true) + line("Buts MPG", mpg, false) + line("CSC", csc, false);
+    return html || `<div class="goal-group none">Aucun but pour le moment.</div>`;
+  }
+
+  function teamColumnHtml(team, displayName) {
+    const starters = Object.values(team.players || {}).sort((a, b) => a.position - b.position);
+    const bench = team.bench || [];
+    return `
+      <div class="team-column">
+        <h2>${displayName}</h2>
+        ${starters.map(playerRowHtml).join("")}
+        <h3>Banc</h3>
+        ${bench.length ? bench.map(benchRowHtml).join("") : `<p class="meta">—</p>`}
+        <h3>Buts</h3>
+        ${goalGroupHtml(team)}
+      </div>`;
+  }
+
+  function matchHeaderHtml(match, homeName, awayName, gameWeek) {
+    return `
+      <div class="match-header">
+        <div class="team home"><div class="team-name">${homeName}</div></div>
+        <div>
+          <div class="score">${fmt(match.home.score)} – ${fmt(match.away.score)}</div>
+          <div class="meta">Journée ${gameWeek}</div>
+        </div>
+        <div class="team away"><div class="team-name">${awayName}</div></div>
+      </div>`;
+  }
+
+  // --- Simulateur de bonus (port verbatim de division.html, generalise a
+  // n'importe quel des deux managers du match via "perspective") ---
+  function simResultHtml(match, myUserId) {
+    const meIsHome = match.home.userId === myUserId;
+    const me = meIsHome ? match.home : match.away;
+    const opponent = meIsHome ? match.away : match.home;
+    return `
+      <div class="sim-result">
+        <div class="side me">
+          <div class="total">${fmt(me.total)}</div>
+          <div class="label">Moi (${fmt(me.score)} buts)</div>
+        </div>
+        <div class="side">
+          <div class="total">${fmt(opponent.total)}</div>
+          <div class="label">Adversaire (${fmt(opponent.score)} buts)</div>
+        </div>
+      </div>`;
+  }
+
+  function classifyResult(myScore, theirScore) {
+    if (myScore > theirScore) return "win";
+    if (myScore < theirScore) return "loss";
+    return "draw";
+  }
+  function computeOutcomeOdds(data) {
+    const rowsByType = {};
+    for (const s of data.scenarios) (rowsByType[s.opponentBonus] ||= []).push(s);
+    const weights = { win: 0, draw: 0, loss: 0 };
+    weights[classifyResult(data.baseline.myScore, data.baseline.theirScore)] += 1;
+    let typeCount = 1;
+    Object.values(rowsByType).forEach(rows => {
+      typeCount += 1;
+      const share = 1 / rows.length;
+      rows.forEach(r => { weights[classifyResult(r.myScore, r.theirScore)] += share; });
+    });
+    return {
+      win: Math.round((weights.win / typeCount) * 100),
+      draw: Math.round((weights.draw / typeCount) * 100),
+      loss: Math.round((weights.loss / typeCount) * 100),
+      total: typeCount,
+    };
+  }
+  function oddsBarHtml(data) {
+    const odds = computeOutcomeOdds(data);
+    const seg = (tone, pct) => pct > 0 ? `<span class="mpg-tag mpg-tag-${tone}" style="flex:${pct}">${pct}%</span>` : "";
+    return `
+      <p class="meta" style="margin:0.75rem 0 0.25rem;">Chances de résultat (à l'instant T)</p>
+      <div style="display:flex; gap:0.25rem;">
+        ${seg("success", odds.win)}${seg("steel", odds.draw)}${seg("danger", odds.loss)}
+      </div>
+      <p class="meta">Victoire ${odds.win}% · Nul ${odds.draw}% · Défaite ${odds.loss}% -- état actuel + 1 poids par type de bonus adverse possible (${odds.total} au total).</p>`;
+  }
+  function swingText(row) {
+    const swing = row.deltaMine - row.deltaTheirs;
+    if (swing === 0) return "=";
+    return swing > 0 ? `+${swing}` : `${swing}`;
+  }
+  function sweepTableHtml(data, isHome) {
+    const rows = data.scenarios.map(s => {
+      const homeScore = isHome ? s.myScore : s.theirScore;
+      const awayScore = isHome ? s.theirScore : s.myScore;
+      const swing = s.deltaMine - s.deltaTheirs;
+      const swingClass = swing < 0 ? "sweep-bad" : "";
+      return `
+        <tr>
+          <td title="${s.label}">${s.label}</td>
+          <td class="num">${homeScore}</td>
+          <td class="num">${awayScore}</td>
+          <td class="num ${swingClass}">${swingText(s)}</td>
+        </tr>`;
+    }).join("");
+    return `
+      ${oddsBarHtml(data)}
+      <div class="table-wrap">
+        <table class="mpg-table">
+          <thead><tr><th></th><th class="num">Domicile</th><th class="num">Extérieur</th><th class="num">Δ</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <p class="meta">Δ = évolution de la différence de buts en ma faveur si l'adversaire joue ce bonus (négatif = mauvais pour moi).</p>`;
+  }
+
+  let lastBaselineMatch = null;
+  let leaguesByCode = {};
+
+  async function runSweep(userId, ownBonus, targetPlayerId, isHome) {
+    const sweepEl = document.getElementById("sweep-panel");
+    sweepEl.innerHTML = `<p class="meta">Bonus adverse -- état des lieux : analyse en cours...</p>`;
+    try {
+      const url = new URL(`${SIMULATE_API_BASE}/live-scenario-sweep`);
+      url.searchParams.set("shortId", leagueCode);
+      url.searchParams.set("season", leaguesByCode[leagueCode].season_search);
+      url.searchParams.set("division", division);
+      url.searchParams.set("gameweek", gameWeek);
+      url.searchParams.set("userId", userId);
+      if (ownBonus) url.searchParams.set("ownBonus", ownBonus);
+      if (targetPlayerId) url.searchParams.set("targetPlayerId", targetPlayerId);
+
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      sweepEl.innerHTML = `<h3 style="font-size:0.9rem;">Bonus adverse -- état des lieux</h3>` + sweepTableHtml(data, isHome);
+    } catch (e) {
+      sweepEl.innerHTML = `<p class="status-msg err">Bonus adverse indisponible (${e.message}).</p>`;
+    }
+  }
+
+  function updateTargetVisibility(myUserId) {
+    const ownBonus = document.getElementById("sim-own-bonus").value;
+    const wrap = document.getElementById("sim-target-wrap");
+    if (!lastBaselineMatch) { wrap.innerHTML = ""; return; }
+    const meIsHome = lastBaselineMatch.home.userId === myUserId;
+    const myTeam = meIsHome ? lastBaselineMatch.home : lastBaselineMatch.away;
+    const hidden = !BONUS_NEEDS_TARGET.has(ownBonus);
+    wrap.innerHTML = `<label>Cible (McDo+)${targetSelectHtml(myTeam, "", hidden)}</label>`;
+  }
+
+  async function initSimulator(userId, divisionSize) {
+    const statusEl = document.getElementById("sim-status");
+    const ownSelect = document.getElementById("sim-own-bonus");
+    ownSelect.innerHTML = optionsHtml(bonusOptionsForDivisionSize(divisionSize), "");
+    ownSelect.addEventListener("change", () => updateTargetVisibility(userId));
+
+    try {
+      const url = new URL(`${SIMULATE_API_BASE}/simulate-bonus`);
+      url.searchParams.set("shortId", leagueCode);
+      url.searchParams.set("season", leaguesByCode[leagueCode].season_search);
+      url.searchParams.set("division", division);
+      url.searchParams.set("gameweek", gameWeek);
+      url.searchParams.set("userId", userId);
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      lastBaselineMatch = data;
+      statusEl.textContent = "";
+      updateTargetVisibility(userId);
+      const meIsHome = data.home.userId === userId;
+      document.getElementById("sweep-panel").innerHTML = "";
+      runSweep(userId, "", "", meIsHome);
+    } catch (e) {
+      statusEl.textContent = "Simulateur indisponible pour le moment (" + e.message + "). Le service met parfois jusqu'à 30s à se réveiller.";
+      statusEl.className = "status-msg err";
+    }
+  }
+
+  async function simulateBonus(userId) {
+    const statusEl = document.getElementById("sim-status");
+    const resultEl = document.getElementById("sim-result");
+    const ownBonus = document.getElementById("sim-own-bonus").value;
+    const targetSelect = document.getElementById("sim-target-player");
+    const targetPlayerId = targetSelect ? targetSelect.value : "";
+
+    statusEl.textContent = "Simulation en cours...";
+    statusEl.className = "status-msg";
+    resultEl.innerHTML = "";
+
+    try {
+      const url = new URL(`${SIMULATE_API_BASE}/simulate-bonus`);
+      url.searchParams.set("shortId", leagueCode);
+      url.searchParams.set("season", leaguesByCode[leagueCode].season_search);
+      url.searchParams.set("division", division);
+      url.searchParams.set("gameweek", gameWeek);
+      url.searchParams.set("userId", userId);
+      if (ownBonus) url.searchParams.set("ownBonus", ownBonus);
+      if (targetPlayerId) url.searchParams.set("targetPlayerId", targetPlayerId);
+
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!res.ok) {
+        statusEl.textContent = "Erreur : " + (data.error || res.statusText);
+        statusEl.className = "status-msg err";
+        return;
+      }
+      statusEl.textContent = "";
+      lastBaselineMatch = data;
+      resultEl.innerHTML = simResultHtml(data, userId);
+      const meIsHome = data.home.userId === userId;
+      runSweep(userId, ownBonus, targetPlayerId, meIsHome);
+    } catch (e) {
+      statusEl.textContent = "Simulation indisponible pour le moment (" + e.message + ").";
+      statusEl.className = "status-msg err";
+    }
+  }
+
+  function simulatorHtml(homeUserId, awayUserId, homeName, awayName, currentUserId) {
+    return `
+      <div class="sim-card">
+        <h2>Simulateur de bonus</h2>
+        <p class="meta">Journée ${gameWeek} -- teste "et si je joue tel coup", et l'état des lieux
+        de tous les coups adverses possibles, sans rien changer sur MPG.</p>
+        <div class="sim-row">
+          <label>Simuler pour<select id="sim-perspective">
+            <option value="${homeUserId}"${currentUserId === homeUserId ? " selected" : ""}>${homeName}</option>
+            <option value="${awayUserId}"${currentUserId === awayUserId ? " selected" : ""}>${awayName}</option>
+          </select></label>
+          <label>Son coup<select id="sim-own-bonus">${optionsHtml(BONUS_OPTIONS, "")}</select></label>
+          <span id="sim-target-wrap"></span>
+          <button id="sim-run-btn">Simuler</button>
+        </div>
+        <div id="sim-status" class="status-msg">Chargement des compositions...</div>
+        <div id="sim-result"></div>
+        <div id="sweep-panel"></div>
+      </div>`;
+  }
+
+  function wireSimulator(homeUserId, awayUserId, homeName, awayName, divisionSize, currentUserId) {
+    document.getElementById("simulator").innerHTML =
+      simulatorHtml(homeUserId, awayUserId, homeName, awayName, currentUserId);
+    document.getElementById("sim-run-btn").addEventListener("click", () => {
+      simulateBonus(document.getElementById("sim-perspective").value);
+    });
+    document.getElementById("sim-perspective").addEventListener("change", (e) => {
+      wireSimulator(homeUserId, awayUserId, homeName, awayName, divisionSize, e.target.value);
+    });
+    initSimulator(currentUserId, divisionSize);
+  }
+
+  async function load() {
+    const statusEl = document.getElementById("status");
+    if (!leagueCode || !division || !gameWeek || !anchorUserId) {
+      statusEl.textContent = "Lien de match invalide (paramètres manquants).";
+      statusEl.className = "status-msg err";
+      return;
+    }
+
+    const [{ data: leaguesData }, { data: divData }, { data: managersData }] = await Promise.all([
+      supabase.from("leagues").select("code, nom, season_search, players_per_division").eq("code", leagueCode),
+      supabase.from("division_classement_live").select("data").eq("league_code", leagueCode).eq("division", division).limit(1),
+      supabase.from("managers").select("user_id, real_name"),
+    ]);
+
+    leaguesByCode = Object.fromEntries((leaguesData || []).map(l => [l.code, l]));
+    const league = leaguesByCode[leagueCode];
+    if (!league) {
+      statusEl.textContent = "Ligue introuvable.";
+      statusEl.className = "status-msg err";
+      return;
+    }
+
+    const realNameByUid = Object.fromEntries((managersData || []).map(m => [m.user_id, m.real_name]));
+    const entries = (divData && divData[0] && divData[0].data) || [];
+    const teamNameByUserId = Object.fromEntries(entries.map(e => [e.userId, e.teamName]));
+    const nameFor = uid => realNameByUid[uid] || teamNameByUserId[uid] || uid;
+
+    try {
+      const url = new URL(`${SIMULATE_API_BASE}/simulate-bonus`);
+      url.searchParams.set("shortId", leagueCode);
+      url.searchParams.set("season", league.season_search);
+      url.searchParams.set("division", division);
+      url.searchParams.set("gameweek", gameWeek);
+      url.searchParams.set("userId", anchorUserId);
+      const res = await fetch(url);
+      const match = await res.json();
+      if (!res.ok) throw new Error(match.error || res.statusText);
+
+      statusEl.textContent = "";
+      const homeName = nameFor(match.home.userId);
+      const awayName = nameFor(match.away.userId);
+
+      document.getElementById("match-header").innerHTML = matchHeaderHtml(match, homeName, awayName, gameWeek);
+      document.getElementById("lineups").innerHTML =
+        teamColumnHtml(match.home, homeName) + teamColumnHtml(match.away, awayName);
+
+      wireSimulator(match.home.userId, match.away.userId, homeName, awayName, league.players_per_division, anchorUserId);
+    } catch (e) {
+      statusEl.textContent = "Match indisponible pour le moment (" + e.message + "). Le service met parfois jusqu'à 30s à se réveiller si inactif -- réessaie dans quelques secondes.";
+      statusEl.className = "status-msg err";
+    }
+  }
+
+  load();
+</script>
+
+</body>
+</html>
