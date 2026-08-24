@@ -3,46 +3,57 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MPG Live</title>
+<title>MPG Live -- Accueil</title>
 <link rel="stylesheet" href="mpg-tokens.css">
 <style>
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; color: var(--mpg-title); }
-  h1 { font-size: 1.6rem; margin: 0 0 0.25rem; }
-  .meta { color: var(--mpg-text-soft); font-size: 0.85rem; margin: 0 0 1.5rem; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: var(--mpg-title); }
+  h1 { font-size: 1.4rem; margin: 0 0 1rem; }
+  .meta { color: var(--mpg-text-soft); font-size: 0.85rem; }
 
-  .card {
-    border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius);
-    padding: 1.25rem; margin: 1rem 0; background: var(--mpg-surface, #fff);
+  .identity-row { display: flex; gap: 0.5rem; align-items: end; flex-wrap: wrap; margin: 0 0 1.5rem; }
+  .identity-row label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.75rem; color: var(--mpg-text-soft); }
+  .identity-row select {
+    border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); padding: 0.4rem 0.5rem;
+    font-size: 0.9rem; font-family: inherit; color: var(--mpg-title); min-width: 14em;
   }
-  .card h2 { margin: 0 0 1rem; font-size: 1.05rem; }
 
-  .row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: end; }
-  label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.75rem; color: var(--mpg-text-soft); flex: 1; min-width: 10em; }
-  select {
-    border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); padding: 0.5rem 0.6rem;
-    font-size: 0.9rem; font-family: inherit; color: var(--mpg-title); background: var(--mpg-surface, #fff);
+  .card { border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); padding: 1.25rem; margin: 1rem 0; }
+  .card h2 { margin: 0 0 1rem; font-size: 1.05rem; display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+  .card h2 a { font-size: 0.85rem; font-weight: 500; color: var(--mpg-action); text-decoration: none; }
+  .card h2 a:hover { text-decoration: underline; }
+
+  .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+  .summary-grid .label { font-size: 0.75rem; color: var(--mpg-text-soft); }
+  .summary-grid .value { font-size: 1.4rem; font-weight: 700; margin-top: 0.15rem; }
+
+  .league-row { display: grid; grid-template-columns: auto 1fr auto; gap: 0.75rem; align-items: center; border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); padding: 0.6rem 0.75rem; margin: 0.5rem 0; }
+  .league-bar { width: 0.25rem; align-self: stretch; border-radius: 999px; }
+  .league-name { font-weight: 600; text-decoration: none; }
+  .league-name:hover { text-decoration: underline; }
+  .league-meta { font-size: 0.8rem; color: var(--mpg-text-soft); margin-top: 0.15rem; }
+  .league-rank { text-align: right; font-weight: 700; white-space: nowrap; }
+  .league-rank.pending { font-weight: 400; font-size: 0.8rem; color: var(--mpg-text-soft); }
+
+  .rank-row { display: grid; grid-template-columns: 2.5rem 1fr auto; gap: 0.75rem; align-items: center; padding: 0.4rem 0.5rem; border-radius: var(--mpg-radius-sm); font-size: 0.9rem; }
+  .rank-row .rank { font-weight: 600; }
+  .rank-row .points { font-weight: 700; text-align: right; }
+  .rank-sep { text-align: center; color: var(--mpg-text-soft); font-size: 0.8rem; padding: 0.15rem 0; }
+
+  .status-msg { color: var(--mpg-text-soft); font-size: 0.9rem; margin: 1rem 0; }
+  .status-msg.err { color: var(--mpg-danger); }
+
+  @media (max-width: 640px) {
+    .summary-grid { grid-template-columns: repeat(2, 1fr); }
   }
-  .actions { display: flex; gap: 0.5rem; margin-top: 0.75rem; flex-wrap: wrap; }
-  a.btn {
-    display: inline-block; background: var(--mpg-action); color: #fff; text-decoration: none;
-    border-radius: var(--mpg-radius); padding: 0.5rem 1rem; font-size: 0.9rem; font-weight: 600;
-  }
-  a.btn:hover { background: var(--mpg-action-hover); }
-  a.btn.secondary { background: var(--mpg-action-soft); color: var(--mpg-action); }
-
-  .super-card { text-align: center; }
-  .super-card p { color: var(--mpg-text-soft); font-size: 0.85rem; margin: 0.25rem 0 1rem; }
-
-  .status-msg { color: var(--mpg-text-soft); font-size: 0.9rem; }
 </style>
 </head>
 <body>
 
 <header class="mpg-banner mpg-no-print">
   <div class="mpg-banner-inner">
-    <a class="mpg-banner-title" href="accueil.html">MPG Live</a>
+    <a class="mpg-banner-title" href="index.html">MPG Live</a>
     <nav class="mpg-banner-nav">
-      <a class="mpg-banner-item" href="accueil.html">Accueil</a>
+      <a class="mpg-banner-item" href="index.html">Accueil</a>
       <a class="mpg-banner-item" href="super-classement.html">Super classement</a>
       <a class="mpg-banner-item" href="ligue.html">Ligues</a>
       <a class="mpg-banner-item" href="division.html">Divisions</a>
@@ -55,26 +66,28 @@
   }
 </script>
 
-<h1>MPG Live</h1>
-<p class="meta">Classements en direct de nos ligues MPG.</p>
-
-<div class="card">
-  <h2>Voir une ligue</h2>
-  <div class="row">
-    <label>Ligue<select id="leagueCode"></select></label>
-    <label>Division<select id="division"></select></label>
-  </div>
-  <div class="actions">
-    <a class="btn" id="division-link" href="#">Classement de division</a>
-    <a class="btn secondary" id="ligue-link" href="#">Classement de ligue (toutes divisions)</a>
-  </div>
-  <p class="status-msg" id="status"></p>
+<div class="identity-row mpg-no-print">
+  <label>Qui es-tu ?<select id="userId"><option value="">— Choisir un manager —</option></select></label>
 </div>
 
-<div class="card super-card">
-  <h2>Super Classement</h2>
-  <p>Toutes les ligues fusionnées, avec les bonus généraux.</p>
-  <a class="btn" href="super-classement.html">Voir le Super Classement</a>
+<h1 id="title">Accueil</h1>
+<div id="status" class="status-msg"></div>
+
+<div id="content" style="display:none">
+  <div class="card">
+    <h2>Résumé</h2>
+    <div class="summary-grid" id="summary"></div>
+  </div>
+
+  <div class="card">
+    <h2>Mes ligues</h2>
+    <div id="my-leagues"></div>
+  </div>
+
+  <div class="card">
+    <h2>Aperçu du Super Classement <a href="super-classement.html">Tout voir &rarr;</a></h2>
+    <div id="super-preview"></div>
+  </div>
 </div>
 
 <script type="module">
@@ -82,51 +95,197 @@
 
   const SUPABASE_URL = "https://zvmngpoogwjiknqrkjky.supabase.co";
   const SUPABASE_ANON_KEY = "sb_publishable_YhAD0_spZJF58Dt_TTQplQ_VrFSKRK8";
-
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  let leaguesByCode = {};
 
-  function updateLinks() {
-    const code = document.getElementById("leagueCode").value;
-    const division = document.getElementById("division").value;
-    document.getElementById("division-link").href = `division.html?ligue=${code}&division=${division}`;
-    document.getElementById("ligue-link").href = `ligue.html?ligue=${code}`;
+  // Meme convention que site/super-classement.html (input "Saison" par
+  // defaut a 2026) -- pas de detection automatique de "la" saison en cours,
+  // aucune source ne la centralise (chaque ligue a sa propre season_search).
+  const SEASON = 2026;
+
+  // Retour utilisateur 2026-08-24 : "reprends le selecteur manager existant"
+  // (pas de vrai login -- accounts/verify_manager_password existent dans le
+  // schema mais ne sont brancges nulle part). Persiste juste le choix en
+  // localStorage pour eviter de re-choisir a chaque visite -- pas une vraie
+  // session, un simple confort, ecrasable par ?user= dans l'URL.
+  const STORAGE_KEY = "mpg_live_user_id";
+  const params = new URLSearchParams(location.search);
+
+  // Meme mapping que division.html/ligue.html -- voir leur commentaire pour
+  // la justification (nom de ligue = championnat reel imite, confirme par
+  // le rendu DOM du site d'Ilan).
+  const LEAGUE_THEME_BY_NOM = {
+    "ligue_camembert": "l1",
+    "rosbeef_league": "pl",
+    "liga_tapas": "liga",
+    "lega_calzone": "seriea",
+    "ligue_2_ekt": "l2",
+    "ligue_des_champignons": "ldc",
+  };
+  // Couleur de TEXTE parfois differente de la couleur de BARRE (seriea/l2
+  // sont trop clairs pour du texte lisible) -- memes choix que vus dans le
+  // DOM d'Ilan (entete_fill_colour vs teamscore_text_colour de
+  // League_Codes.json va dans le meme sens historiquement).
+  const THEME_COLORS = {
+    l1: { bar: "var(--mpg-league-l1)", text: "var(--mpg-league-l1)" },
+    pl: { bar: "var(--mpg-league-pl)", text: "var(--mpg-league-pl)" },
+    liga: { bar: "var(--mpg-league-liga)", text: "var(--mpg-league-liga)" },
+    seriea: { bar: "var(--mpg-league-seriea)", text: "var(--mpg-league-seriea-text)" },
+    l2: { bar: "var(--mpg-league-l2)", text: "var(--mpg-league-l2-text)" },
+    ldc: { bar: "var(--mpg-league-ldc)", text: "var(--mpg-league-ldc)" },
+    neutral: { bar: "var(--mpg-text-off)", text: "var(--mpg-text-soft)" },
+  };
+  function leagueTheme(nom) {
+    return LEAGUE_THEME_BY_NOM[(nom || "").toLowerCase()] || "neutral";
   }
 
-  function populateDivisionOptions() {
-    const league = leaguesByCode[document.getElementById("leagueCode").value];
-    const divisionSelect = document.getElementById("division");
-    if (!league) { divisionSelect.innerHTML = ""; return; }
-
-    const totalDivisions = Math.round(league.players_number / league.players_per_division);
-    const options = [];
-    for (let d = 1; d <= totalDivisions; d++) options.push(`<option value="${d}">Division ${d}</option>`);
-    divisionSelect.innerHTML = options.join("");
-    updateLinks();
+  function fmt(n) {
+    if (n === null || n === undefined) return "–";
+    return Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\.0$/, "");
   }
 
-  async function init() {
+  async function populateUserSelect() {
+    const { data, error } = await supabase.from("managers").select("user_id, real_name").order("real_name");
+    const select = document.getElementById("userId");
+    if (!error && data) {
+      select.innerHTML = `<option value="">— Choisir un manager —</option>`
+        + data.map(m => `<option value="${m.user_id}">${m.real_name}</option>`).join("");
+    }
+    const wanted = params.get("user") || localStorage.getItem(STORAGE_KEY) || "";
+    if (wanted) select.value = wanted;
+  }
+
+  function summaryHtml(myRow, participantCount) {
+    return `
+      <div><div class="label">Rang au Super Classement</div><div class="value">${myRow ? "#" + myRow.rang : "–"}</div></div>
+      <div><div class="label">Total de points</div><div class="value">${myRow ? fmt(myRow.points) : "–"}</div></div>
+      <div><div class="label">Participants</div><div class="value">${participantCount}</div></div>`;
+  }
+
+  function leagueRowHtml({ row, entry, league }) {
+    const theme = leagueTheme(league && league.nom);
+    const colors = THEME_COLORS[theme];
+    const name = league ? league.nom.replace(/_/g, " ") : row.league_code;
+    const statusColor = row.is_live ? "var(--mpg-warning)" : "var(--mpg-success)";
+    const statusLabel = row.is_live ? "en cours" : "terminée";
+    const progress = row.real_matches_progress;
+    const progressText = progress ? ` (${progress.done}/${progress.total} matchs réels)` : "";
+    const rankHtml = entry.rang_ligue != null
+      ? `<div class="league-rank">#${entry.rang_ligue}</div>`
+      : `<div class="league-rank pending">pas encore classé</div>`;
+    return `
+      <div class="league-row">
+        <span class="league-bar" style="background:${colors.bar}"></span>
+        <div>
+          <a class="league-name" style="color:${colors.text}" href="ligue.html?ligue=${row.league_code}&user=${entry.userId}">${name}</a>
+          <div class="league-meta">Division ${row.division} · Journée ${row.game_week} ·
+            <span style="color:${statusColor}">${statusLabel}</span>${progressText}</div>
+        </div>
+        ${rankHtml}
+      </div>`;
+  }
+
+  function rankRowHtml(row, isMe, realNameByUid) {
+    const teamName = (row.bonus_details && row.bonus_details.teamName) || row.user_id;
+    const displayName = realNameByUid[row.user_id] || teamName;
+    return `
+      <div class="rank-row${isMe ? " mpg-row-selected" : ""}">
+        <span class="rank">#${row.rang}</span>
+        <span>${isMe ? "★ " : ""}${displayName}</span>
+        <span class="points">${fmt(row.points)}</span>
+      </div>`;
+  }
+
+  // Fenetre centree sur mon rang (toujours le rang 1 + mon rang -2..+2,
+  // "⋯" entre les deux s'il y a un trou) -- pas de fleche de progression
+  // (rang precedent/delta de points) : ni division_classement_live ni
+  // super_classement ne gardent d'instantane "avant" a comparer (limite
+  // connue v1, cf. schema.sql -- a batir plus tard si demande, meme
+  // mecanisme que real_matches_progress serait insuffisant seul, il faudrait
+  // une vraie ligne "precedente" persistee).
+  function superPreviewHtml(superData, myRow, realNameByUid) {
+    if (!myRow) return `<p class="status-msg">Pas encore classé au Super Classement.</p>`;
+    const total = superData.length;
+    const wanted = new Set([1]);
+    for (let r = Math.max(1, myRow.rang - 2); r <= Math.min(total, myRow.rang + 2); r++) wanted.add(r);
+    const ranks = [...wanted].sort((a, b) => a - b);
+    let html = "";
+    let prev = 0;
+    for (const r of ranks) {
+      if (prev && r - prev > 1) html += `<div class="rank-sep">⋯</div>`;
+      const row = superData[r - 1];
+      html += rankRowHtml(row, row.user_id === myRow.user_id, realNameByUid);
+      prev = r;
+    }
+    return html;
+  }
+
+  async function load() {
+    const userId = document.getElementById("userId").value;
     const statusEl = document.getElementById("status");
-    const { data, error } = await supabase
-      .from("leagues")
-      .select("nom, code, season_search, players_number, players_per_division")
-      .order("nom");
+    const contentEl = document.getElementById("content");
+    const titleEl = document.getElementById("title");
 
-    if (error || !data || !data.length) {
-      statusEl.textContent = "Impossible de charger la liste des ligues.";
+    if (!userId) {
+      statusEl.textContent = "Choisis un manager ci-dessus pour voir ta situation.";
+      statusEl.className = "status-msg";
+      contentEl.style.display = "none";
+      titleEl.textContent = "Accueil";
+      localStorage.removeItem(STORAGE_KEY);
+      return;
+    }
+    localStorage.setItem(STORAGE_KEY, userId);
+
+    statusEl.textContent = "Chargement...";
+    statusEl.className = "status-msg";
+    contentEl.style.display = "none";
+
+    const [{ data: superData, error: superErr }, { data: leaguesData }, { data: divData }, { data: managersData }] = await Promise.all([
+      supabase.from("super_classement").select("*").eq("season", SEASON).order("points", { ascending: false }),
+      supabase.from("leagues").select("code, nom, season_search"),
+      supabase.from("division_classement_live").select("*"),
+      supabase.from("managers").select("user_id, real_name"),
+    ]);
+
+    if (superErr) {
+      statusEl.textContent = "Erreur : " + superErr.message;
+      statusEl.className = "status-msg err";
       return;
     }
 
-    leaguesByCode = Object.fromEntries(data.map(l => [l.code, l]));
-    const select = document.getElementById("leagueCode");
-    select.innerHTML = data.map(l => `<option value="${l.code}">${l.nom.replace(/_/g, " ")}</option>`).join("");
+    const leaguesByCode = Object.fromEntries((leaguesData || []).map(l => [l.code, l]));
+    const realNameByUid = Object.fromEntries((managersData || []).map(m => [m.user_id, m.real_name]));
 
-    select.addEventListener("change", populateDivisionOptions);
-    document.getElementById("division").addEventListener("change", updateLinks);
-    populateDivisionOptions();
+    superData.forEach((r, i) => { r.rang = i + 1; });
+    const myRow = superData.find(r => r.user_id === userId);
+    titleEl.textContent = realNameByUid[userId] || userId;
+
+    document.getElementById("summary").innerHTML = summaryHtml(myRow, superData.length);
+
+    // "Mes ligues" -- pas de table de membership dediee : on retrouve mes
+    // ligues en cherchant ma ligne dans chaque division_classement_live deja
+    // pollee. Une ligue jamais encore pollee cette saison (statut "a venir")
+    // n'apparait donc pas ici -- limite connue v1, pas de donnee pour la
+    // detecter autrement (retour utilisateur 2026-08-24, priorite donnee au
+    // polish rapide plutot qu'a une nouvelle table de membership).
+    const myLeagueRows = [];
+    for (const row of (divData || [])) {
+      const entry = (row.data || []).find(e => e.userId === userId);
+      if (entry) myLeagueRows.push({ row, entry, league: leaguesByCode[row.league_code] });
+    }
+    myLeagueRows.sort((a, b) => (a.league ? a.league.nom : "").localeCompare(b.league ? b.league.nom : ""));
+    document.getElementById("my-leagues").innerHTML = myLeagueRows.length
+      ? myLeagueRows.map(leagueRowHtml).join("")
+      : `<p class="status-msg">Aucune ligue trouvée pour ce manager (saison pas encore pollée).</p>`;
+
+    document.getElementById("super-preview").innerHTML = superPreviewHtml(superData, myRow, realNameByUid);
+
+    statusEl.textContent = "";
+    contentEl.style.display = "";
   }
 
-  init();
+  document.getElementById("userId").addEventListener("change", load);
+  await populateUserSelect();
+  load();
 </script>
 
 </body>
