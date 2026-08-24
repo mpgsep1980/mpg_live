@@ -97,7 +97,6 @@
   <label>Ligue<select id="leagueCode"></select></label>
   <label>Division<select id="division"></select></label>
   <label>Manager (Ma situation)<select id="userId" style="min-width:12em"><option value="">— Ma situation (optionnel) —</option></select></label>
-  <button id="load-btn">Charger</button>
 </div>
 
 <div id="situation"></div>
@@ -157,7 +156,16 @@
     if (wantedDivision && Number(wantedDivision) <= totalDivisions) divisionSelect.value = wantedDivision;
   }
 
+  // Plus de bouton "Charger" (retour utilisateur 2026-08-24, "le bouton
+  // Charger alourdit l'experience") -- chaque changement de selecteur
+  // recharge instantanement. populateDivisionOptions() DOIT s'executer
+  // avant load() sur le changement de ligue (fixe le select Division avant
+  // que load() ne lise sa valeur) -- deux listeners separes plutot qu'un
+  // seul, l'ordre d'enregistrement garantit l'ordre d'execution sur un
+  // meme evenement.
   document.getElementById("leagueCode").addEventListener("change", populateDivisionOptions);
+  document.getElementById("leagueCode").addEventListener("change", load);
+  document.getElementById("division").addEventListener("change", load);
 
   // Registre managers (retour utilisateur 2026-08-24, "on voit toujours un
   // nom d'equipe au lieu du realname") -- {userId: RealName}, charge une
@@ -574,7 +582,6 @@
       </div>`;
   }
 
-  document.getElementById("load-btn").addEventListener("click", load);
   document.getElementById("userId").addEventListener("change", load);
   await Promise.all([loadLeagueOptions(), loadManagerNames()]);
   load();

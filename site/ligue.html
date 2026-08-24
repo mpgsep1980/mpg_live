@@ -65,7 +65,6 @@
 <div class="controls mpg-no-print">
   <label>Ligue<select id="leagueCode"></select></label>
   <label>userId (ma ligne)<input id="userId" placeholder="user_..." style="width:10em"></label>
-  <button id="load-btn">Charger</button>
 </div>
 
 <div class="search-row mpg-no-print">
@@ -238,7 +237,10 @@
     applyFilter();
   }
 
-  document.getElementById("load-btn").addEventListener("click", load);
+  // Pas de bouton "Charger" -- retour utilisateur 2026-08-24, "le bouton
+  // Charger alourdit l'experience" -- chaque changement recharge aussitot.
+  document.getElementById("leagueCode").addEventListener("change", load);
+  document.getElementById("userId").addEventListener("change", load);
   document.getElementById("search").addEventListener("input", applyFilter);
   await Promise.all([loadLeagueOptions(), loadManagerNames()]);
   load();
