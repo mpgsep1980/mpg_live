@@ -109,6 +109,16 @@
     if (wantedCode && leaguesByCode[wantedCode]) select.value = wantedCode;
   }
 
+  // Registre managers (retour utilisateur 2026-08-24, "on voit toujours un
+  // nom d'equipe au lieu du realname") -- meme source que division.html.
+  let realNameByUid = {};
+
+  async function loadManagerNames() {
+    const { data, error } = await supabase.from("managers").select("user_id, real_name");
+    if (error || !data) return;
+    realNameByUid = Object.fromEntries(data.map(m => [m.user_id, m.real_name]));
+  }
+
   for (const [param, id] of [["user", "userId"]]) {
     const v = params.get(param);
     if (v) document.getElementById(id).value = v;
@@ -140,10 +150,11 @@
 
   function rowHtml(entry, isMe) {
     const played = entry.matches_joues ?? 0;
+    const displayName = realNameByUid[entry.userId] || entry.teamName || entry.userId;
     return `
-      <tr data-name="${(entry.teamName || entry.userId || "").toLowerCase()}" class="${isMe ? "mpg-row-selected" : ""}">
+      <tr data-name="${displayName.toLowerCase()}" class="${isMe ? "mpg-row-selected" : ""}">
         <td class="rank" data-label="Rang">#${entry.rang_ligue ?? "–"}</td>
-        <td class="team" data-label="Équipe">${entry.teamName || entry.userId}</td>
+        <td class="team" data-label="Équipe">${displayName}</td>
         <td class="division" data-label="Division">D${entry.division}</td>
         <td class="num" data-label="Pts">${fmt(entry.points_ligue)}</td>
         <td class="num" data-label="J">${fmt(played)}</td>
@@ -229,7 +240,7 @@
 
   document.getElementById("load-btn").addEventListener("click", load);
   document.getElementById("search").addEventListener("input", applyFilter);
-  await loadLeagueOptions();
+  await Promise.all([loadLeagueOptions(), loadManagerNames()]);
   load();
 </script>
 

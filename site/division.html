@@ -133,6 +133,20 @@
 
   document.getElementById("leagueCode").addEventListener("change", populateDivisionOptions);
 
+  // Registre managers (retour utilisateur 2026-08-24, "on voit toujours un
+  // nom d'equipe au lieu du realname") -- {userId: RealName}, charge une
+  // seule fois. Pas dans `leagues`/`division_classement_live` : nom
+  // d'equipe MPG et vrai nom de manager sont deux notions distinctes,
+  // celle-ci vient de scripts/seed_managers.py (source locale MPG_Users.json,
+  // aucun endpoint MPG n'expose le RealName directement).
+  let realNameByUid = {};
+
+  async function loadManagerNames() {
+    const { data, error } = await supabase.from("managers").select("user_id, real_name");
+    if (error || !data) return;
+    realNameByUid = Object.fromEntries(data.map(m => [m.user_id, m.real_name]));
+  }
+
   for (const [param, id] of [["user", "userId"]]) {
     const v = params.get(param);
     if (v) document.getElementById(id).value = v;
@@ -166,7 +180,7 @@
     return `
       <tr class="${isMe ? "mpg-row-selected" : ""}">
         <td class="rank" data-label="Rang">#${entry.rang}</td>
-        <td class="team" data-label="Équipe">${entry.teamName || entry.userId}</td>
+        <td class="team" data-label="Équipe">${realNameByUid[entry.userId] || entry.teamName || entry.userId}</td>
         <td class="num" data-label="Pts">${fmt(entry.points)}</td>
         <td class="num" data-label="J">${fmt(played)}</td>
         <td class="num" data-label="V">${fmt(entry.victoires)}</td>
@@ -253,7 +267,7 @@
   }
 
   document.getElementById("load-btn").addEventListener("click", load);
-  await loadLeagueOptions();
+  await Promise.all([loadLeagueOptions(), loadManagerNames()]);
   load();
 </script>
 

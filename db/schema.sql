@@ -220,6 +220,21 @@ grant execute on function verify_manager_password to anon, authenticated;
 grant execute on function set_manager_password to anon, authenticated;
 
 -- ============================================================
+-- Registre des managers -- {userId: RealName} (MPG_Users.json cote
+-- mpg_app, jamais porte jusqu'ici -- decision v1 du plan "Page Division
+-- pour mpg_live" : "pas de nouvelle table managers dans ce chantier".
+-- Retour utilisateur 2026-08-24, "on voit toujours un nom d'equipe au
+-- lieu du realname" -- alimente par scripts/seed_managers.py depuis le
+-- fichier local (source de verite reste MPG_Users.json, aucun endpoint
+-- MPG n'expose le RealName directement).
+-- ============================================================
+create table managers (
+    user_id     text primary key,
+    real_name   text not null,
+    updated_at  timestamptz not null default now()
+);
+
+-- ============================================================
 -- RLS -- lecture publique, ecriture reservee au role service_role (celui
 -- utilise par scripts/live_job.py, qui contourne RLS par defaut sur
 -- Supabase -- aucune policy d'ecriture a ajouter pour lui). Sans ceci,
@@ -234,6 +249,7 @@ alter table league_classement_archive enable row level security;
 alter table division_classement_live enable row level security;
 alter table super_classement enable row level security;
 alter table general_bonus_config enable row level security;
+alter table managers enable row level security;
 
 create policy "public read" on leagues for select using (true);
 create policy "public read" on gameweek_state for select using (true);
@@ -242,3 +258,4 @@ create policy "public read" on league_classement_archive for select using (true)
 create policy "public read" on division_classement_live for select using (true);
 create policy "public read" on super_classement for select using (true);
 create policy "public read" on general_bonus_config for select using (true);
+create policy "public read" on managers for select using (true);

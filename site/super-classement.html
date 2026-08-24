@@ -71,6 +71,19 @@
     if (v) document.getElementById(id).value = v;
   }
 
+  // Registre managers (retour utilisateur 2026-08-24, "on voit toujours un
+  // nom d'equipe au lieu du realname") -- meme source que division.html/
+  // ligue.html. Prioritaire sur bonus_details.teamName (nom de la ligue ou
+  // ce manager a le plus de points_ligue, cf. compute_super_classement --
+  // moins pertinent qu'un vrai nom de manager des qu'il est disponible).
+  let realNameByUid = {};
+
+  async function loadManagerNames() {
+    const { data, error } = await supabase.from("managers").select("user_id, real_name");
+    if (error || !data) return;
+    realNameByUid = Object.fromEntries(data.map(m => [m.user_id, m.real_name]));
+  }
+
   function fmt(n) {
     if (n === null || n === undefined) return "–";
     return Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\.0$/, "");
@@ -81,9 +94,11 @@
   // categorie avec points=0, comme Winner/Pétard Mouillé/Passoire/FFL/
   // Macroniste/Harry Maguire Challenge/La Chèvre, ecrit TOUJOURS 0 dans
   // bonus_details meme quand elle est "gagnee" : filtrees naturellement par
-  // bonusBadges() ci-dessous sans liste d'exclusion a maintenir). Categories
-  // encore inertes en v1 (La Piñata/Gollum/Poulidor) gardees dans la table
-  // au cas ou leurs donnees sources arrivent plus tard.
+  // bonusBadges() ci-dessous sans liste d'exclusion a maintenir). Toutes
+  // les 16 categories sont actives depuis le 2026-08-24 -- Multi Boss/La
+  // Triplette/Super_Podium/"{code}_Podium_XX" (core/live_projection.py::
+  // compute_super_classement) retombent sur le ton "neutral" par defaut,
+  // pas encore de teinte dediee.
   const BONUS_TONE = {
     "Sulfateuse": "fire",
     "Rideau de Fer": "steel",
@@ -110,10 +125,11 @@
 
   function rowHtml(row, isMe) {
     const teamName = (row.bonus_details && row.bonus_details.teamName) || row.user_id;
+    const displayName = realNameByUid[row.user_id] || teamName;
     return `
-      <tr data-name="${teamName.toLowerCase()}" class="${isMe ? "mpg-row-selected" : ""}">
+      <tr data-name="${displayName.toLowerCase()}" class="${isMe ? "mpg-row-selected" : ""}">
         <td class="rank">#${row.rang}</td>
-        <td>${teamName}</td>
+        <td>${displayName}</td>
         <td class="num">${fmt(row.points)}</td>
         <td>${bonusBadges(row.bonus_details)}</td>
       </tr>`;
@@ -174,6 +190,7 @@
 
   document.getElementById("load-btn").addEventListener("click", load);
   document.getElementById("search").addEventListener("input", applyFilter);
+  await loadManagerNames();
   load();
 </script>
 
