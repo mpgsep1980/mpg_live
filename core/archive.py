@@ -38,22 +38,26 @@ from core.live_projection import (
 )
 
 
-def _stats_from_row(row: dict) -> dict:
+def _stats_from_row(row: dict, precious_holder_user_id: str | None = None) -> dict:
     """Convertit une ligne de sortie de combined_division_standings (cles
     buts_pour/buts_contre/victory/...) vers la forme stockee en base
     (score+/score-/victory/..., cf. db/schema.sql) -- la meme forme que
     load_base_division_classement lit en entree, necessaire pour pouvoir
     enchainer plusieurs journees d'affilee dans rebuild_division_archive.
-    pichichi/mur/bonus_champion/bonus_podium AJOUTES (retour utilisateur
-    2026-08-24, "recupere la logique de points qu'on a definie dans le
-    document partage avec Ilan, on n'a pas besoin de reinventer la roue") --
-    core.internal_bonus.compute_internal_bonuses (deja audite/corrige avec
-    Ilan, deja utilise tel quel par le chemin LIVE de resolve_division_rows)
-    est maintenant AUSSI appele a l'archivage, au lieu de laisser ces
-    bonus retomber a 0 des qu'une journee est archivee -- meme solution que
-    celle documentee dans Reponse_audit_pour_Ilan.md section "Regeneration
-    de l'archive en cours de saison" (recalculer depuis les matchs bruts,
-    jamais improviser une nouvelle formule)."""
+    pichichi/mur/bonus_champion/bonus_podium/precious AJOUTES (retour
+    utilisateur 2026-08-24, "recupere la logique de points qu'on a definie
+    dans le document partage avec Ilan, on n'a pas besoin de reinventer la
+    roue") -- formule officielle retrouvee dans le notebook de production
+    (calculate_total_points, MPG_Ligue_2_EKT_Test_2025.ipynb) : total =
+    points_pond + Pichichi + Le_Mur + cleanSheet + manita + Bonus_Podium +
+    Bonus_Champion + on_fire + Precious - grotaldo. core.internal_bonus.
+    compute_internal_bonuses (deja audite/corrige avec Ilan, deja utilise
+    tel quel par le chemin LIVE de resolve_division_rows) est maintenant
+    AUSSI appele a l'archivage, au lieu de laisser ces bonus retomber a 0
+    des qu'une journee est archivee -- meme solution que celle documentee
+    dans Reponse_audit_pour_Ilan.md section "Regeneration de l'archive en
+    cours de saison" (recalculer depuis les matchs bruts, jamais improviser
+    une nouvelle formule)."""
     bonus = row.get("bonus_details") or {}
     return {
         "teamName": row.get("teamName", ""),
@@ -65,6 +69,7 @@ def _stats_from_row(row: dict) -> dict:
         "grotaldo": row["grotaldo"], "owngoals": row["owngoals"],
         "pichichi": bonus.get("Pichichi", 0), "mur": bonus.get("Le_Mur", 0),
         "bonus_champion": bonus.get("Bonus_Champion", 0), "bonus_podium": bonus.get("Bonus_Podium", 0),
+        "precious": 1 if precious_holder_user_id and row["userId"] == precious_holder_user_id else 0,
     }
 
 
@@ -104,10 +109,12 @@ def archive_closed_gameweek_if_needed(sb, league: dict, closed_game_week: int, t
             done += 1
             continue
 
+        precious_holder_user_id = capture.get("preciousHolderUserId")
         now = datetime.now(timezone.utc).isoformat()
         sb.table("live_snapshots").upsert({
             "league_code": short_id, "season": season, "game_week": closed_game_week,
-            "division": division, "data": division_matches, "updated_at": now,
+            "division": division, "data": division_matches,
+            "precious_holder_user_id": precious_holder_user_id, "updated_at": now,
         }).execute()
 
         delta_rows = division_delta(division_matches, division, closed_game_week, league, total_divisions)
@@ -121,7 +128,8 @@ def archive_closed_gameweek_if_needed(sb, league: dict, closed_game_week: int, t
         for row in combined:
             sb.table("league_classement_archive").upsert({
                 "league_code": short_id, "season": season, "division": division,
-                "user_id": row["userId"], "stats": _stats_from_row(row), "updated_at": now,
+                "user_id": row["userId"], "stats": _stats_from_row(row, precious_holder_user_id),
+                "updated_at": now,
             }).execute()
         done += 1
 
@@ -146,13 +154,13 @@ def rebuild_division_archive(sb, league: dict, division: int, total_divisions: i
     season = league["seasonSearch"]
 
     snap_res = (
-        sb.table("live_snapshots").select("game_week, data")
+        sb.table("live_snapshots").select("game_week, data, precious_holder_user_id")
         .eq("league_code", short_id).eq("season", season).eq("division", division)
         .order("game_week")
         .execute()
     )
     final_snapshots = [
-        (row["game_week"], row["data"]) for row in snap_res.data
+        (row["game_week"], row["data"], row.get("precious_holder_user_id")) for row in snap_res.data
         if all_division_matches_final(row["data"])
     ]
     if not final_snapshots:
@@ -165,7 +173,7 @@ def rebuild_division_archive(sb, league: dict, division: int, total_divisions: i
     setup = league_setup(sb, league, [division], final_snapshots[-1][0])
 
     base_by_user: dict[str, dict] = {}
-    for game_week, division_matches in final_snapshots:
+    for game_week, division_matches, precious_holder_user_id in final_snapshots:
         delta_rows = division_delta(division_matches, division, game_week, league, total_divisions)
         combined_rows = combined_division_standings(base_by_user, delta_rows)
         compute_internal_bonuses(
@@ -173,7 +181,7 @@ def rebuild_division_archive(sb, league: dict, division: int, total_divisions: i
             setup["league_size"], setup["season_number"], setup["season_start"], league["nom"],
             setup["internal_cfg"], division_matches=division_matches,
         )
-        base_by_user = {row["userId"]: _stats_from_row(row) for row in combined_rows}
+        base_by_user = {row["userId"]: _stats_from_row(row, precious_holder_user_id) for row in combined_rows}
 
     now = datetime.now(timezone.utc).isoformat()
     for user_id, stats in base_by_user.items():

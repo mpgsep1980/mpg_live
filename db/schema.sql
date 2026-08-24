@@ -45,12 +45,20 @@ create table gameweek_state (
 -- (liste de matchs {home, away, ...}), pas encore fusionne en classement.
 -- ============================================================
 create table live_snapshots (
-    league_code  text not null references leagues(code),
-    season       integer not null,
-    game_week    integer not null,
-    division     integer not null,
-    data         jsonb not null,
-    updated_at   timestamptz not null default now(),
+    league_code             text not null references leagues(code),
+    season                  integer not null,
+    game_week               integer not null,
+    division                integer not null,
+    data                    jsonb not null,
+    -- userId du detenteur du Precieux APRES cette journee (core.archive_capture
+    -- ::capture_division_journee, via get_division_calendar) -- NULL pour une
+    -- ligne ecrite par le poll live (compute_division_live_scores, qui n'a pas
+    -- cette donnee -- seule capture_division_journee, une fois la journee
+    -- finalisee, la resout). Retour utilisateur 2026-08-24 : la formule
+    -- officielle de points (calculate_total_points, notebook mpg_app) inclut
+    -- "+ Precious" -- besoin de ce champ pour la reproduire a l'archivage.
+    precious_holder_user_id text,
+    updated_at              timestamptz not null default now(),
     primary key (league_code, season, game_week, division)
 );
 

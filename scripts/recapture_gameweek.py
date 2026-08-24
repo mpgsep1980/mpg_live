@@ -49,6 +49,7 @@ def recapture_division_gameweek(sb, league: dict, division: int, game_week: int)
     sb.table("live_snapshots").upsert({
         "league_code": short_id, "season": season, "game_week": game_week,
         "division": division, "data": capture["divisionMatches"],
+        "precious_holder_user_id": capture.get("preciousHolderUserId"),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }).execute()
     return True

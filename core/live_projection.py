@@ -220,6 +220,7 @@ def _rows_from_archive(base_by_user: dict) -> list[dict]:
             "boss": bool(base.get("bonus_champion", 0) > 0),
             "points_pond": base.get("points_pond", 0.0),
             "_bonus_champion": base.get("bonus_champion", 0), "_bonus_podium": base.get("bonus_podium", 0),
+            "_precious": base.get("precious", 0),
         })
     return rows
 
@@ -298,9 +299,15 @@ def resolve_division_rows(league: dict, division_number: int, division_matches: 
                 "boss": bool(bonus.get("Bonus_Champion", 0) > 0),
                 "points_pond": row["points_pond"],
                 # Internes -- consommes uniquement par resolve_league_wide_ranks,
-                # jamais publies (cf. finalize_division_data).
+                # jamais publies (cf. finalize_division_data). _precious=0
+                # ici : Mon Precieux n'est resoluble QUE via get_division_calendar
+                # (core/archive_capture.py), jamais dispo pendant une journee
+                # encore en cours -- meme limite que cote mpg_app (cf.
+                # docstring get_division_calendar, "absents pour les journees
+                # dont le vrai resultat n'est pas encore confirme").
                 "_bonus_champion": bonus.get("Bonus_Champion", 0),
                 "_bonus_podium": bonus.get("Bonus_Podium", 0),
+                "_precious": 0,
             })
         is_live = True
 
@@ -311,25 +318,34 @@ def resolve_league_wide_ranks(rows_by_division: dict[int, list[dict]], match_bon
     """Passe 2 : rang/points croises entre TOUTES les divisions d'une ligue,
     pour la carte "Ma situation" (rang_ligue/points_ligue).
 
-    Formule SIMPLIFIEE v1 (decision utilisateur validee 2026-08-21) :
+    Formule OFFICIELLE (retour utilisateur 2026-08-24, "recupere la logique
+    de points qu'on a definie dans le document partage avec Ilan, on n'a
+    pas besoin de reinventer la roue" -- retrouvee dans le notebook de
+    production mpg_app, calculate_total_points,
+    MPG_Ligue_2_EKT_Test_2025.ipynb, verifiee terme a terme contre un
+    classement reel Ligue_Camembert) :
     points_pond + Pichichi + Le_Mur + Bonus_Champion + Bonus_Podium +
-    compteurs de match (cleanSheet/manita/on_fire, gates par
-    matchBonuses.enabled comme la formule officielle) -- SANS Precieux ni
-    Grotaldo, aucune source Supabase pour l'un ou l'autre en v1 (cf. plan
-    "Page Division pour mpg_live", Etape 3). Ne matchera donc PAS exactement
-    le "points" officiel de mpg_app (core/live_projection.py::
-    _finalize_league_row) tant que ces deux-la ne seront pas portes dans un
-    chantier separe -- limite connue, documentee plutot que silencieuse."""
+    cleanSheet + manita + on_fire + Precious - Grotaldo. Les 5 derniers
+    termes sont gates par matchBonuses.enabled (meme mecanisme que la
+    formule officielle -- decision LDC "bonus de match neutralises", cf.
+    Reponse_audit_pour_Ilan.md section 6). _precious vaut toujours 0 sur
+    une division encore EN COURS (resolu uniquement a l'archivage, cf.
+    core/archive_capture.py) -- points_ligue peut donc sous-compter jusqu'a
+    1 point pour le detenteur pendant qu'une journee est encore live,
+    corrige des qu'elle est archivee."""
     mb_enabled = (match_bonus_cfg or {}).get("enabled", {})
     entries = []
     for division_rows in rows_by_division.values():
         for row in division_rows:
             live_counter_total = sum(row.get(k, 0) for k in LIVE_COUNTER_KEYS if mb_enabled.get(k, True))
+            grotaldo_term = row.get("grotaldo", 0) if mb_enabled.get("grotaldo", True) else 0
+            precious_term = row.get("_precious", 0) if mb_enabled.get("precious", True) else 0
             points_ligue = round(
                 row.get("points_pond", 0.0)
                 + row.get("pichichi", 0) + row.get("mur", 0)
                 + row.get("_bonus_champion", 0) + row.get("_bonus_podium", 0)
-                + live_counter_total,
+                + live_counter_total
+                + precious_term - grotaldo_term,
                 4,
             )
             entries.append((row["userId"], points_ligue))
