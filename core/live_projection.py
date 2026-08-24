@@ -199,8 +199,13 @@ def _rows_from_archive(base_by_user: dict) -> list[dict]:
     refresh_division_classement_from_archive (retour utilisateur 2026-08-24 :
     une division reste vide sur site/division.html tant qu'aucune fenetre
     live n'a jamais ete pollee, meme si son archive existe deja).
-    pichichi/mur/boss retombent a 0/False -- meme limite connue v1 que
-    l'origine (bonus internes non stockes par l'archive, cf. db/schema.sql)."""
+    pichichi/mur/bonus_champion/bonus_podium lus directement depuis
+    l'archive (retour utilisateur 2026-08-24, "recupere la logique de
+    points qu'on a definie dans le document partage avec Ilan" --
+    core/archive.py appelle desormais compute_internal_bonuses a
+    l'archivage, comme le fait deja le chemin live ci-dessous -- ces champs
+    ne retombent plus a 0/False. Repli a 0/False conserve seulement pour
+    une archive ANTERIEURE a ce changement (pas encore regeneree)."""
     rows = []
     for uid, base in base_by_user.items():
         rows.append({
@@ -211,8 +216,10 @@ def _rows_from_archive(base_by_user: dict) -> list[dict]:
             "buts_pour": base.get("score+", 0), "buts_contre": base.get("score-", 0),
             "cleanSheet": base.get("cleanSheet", 0), "manita": base.get("manita", 0), "on_fire": base.get("on_fire", 0),
             "grotaldo": base.get("grotaldo", 0), "owngoals": base.get("owngoals", 0),
-            "pichichi": 0, "mur": 0, "boss": False,
+            "pichichi": base.get("pichichi", 0), "mur": base.get("mur", 0),
+            "boss": bool(base.get("bonus_champion", 0) > 0),
             "points_pond": base.get("points_pond", 0.0),
+            "_bonus_champion": base.get("bonus_champion", 0), "_bonus_podium": base.get("bonus_podium", 0),
         })
     return rows
 
@@ -258,10 +265,11 @@ def resolve_division_rows(league: dict, division_number: int, division_matches: 
     recoit Bonus_Champion/Second/Dernier ci-dessous, pas l'ordre affiche,
     comportement identique a mpg_app sur ce meme point). Renvoie (rows,
     is_live) -- is_live=False si cette journee est deja archivee (les
-    bonus internes ne sont alors PAS recalcules : league_classement_archive
-    ne les stocke pas en v1, cf. db/schema.sql -- pichichi/mur/boss
-    retombent a 0/False jusqu'a la prochaine journee live, LIMITE CONNUE
-    v1, a completer si l'archive stocke un jour ces valeurs)."""
+    bonus internes ne sont alors PAS recalcules en direct ici, mais lus
+    depuis league_classement_archive, qui les stocke desormais -- cf.
+    core/archive.py::archive_closed_gameweek_if_needed, retour utilisateur
+    2026-08-24 -- pichichi/mur/boss refletent la derniere archive, pas
+    "0/False" comme avant ce correctif)."""
     user_ids = [m[side].get("userId") for m in division_matches for side in ("home", "away")]
     base_by_user = setup["base_by_division"].get(division_number, {})
 

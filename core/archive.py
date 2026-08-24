@@ -32,8 +32,9 @@ from datetime import datetime, timezone
 
 from core.archive_capture import capture_division_journee
 from core.live_scoring import all_division_matches_final
+from core.internal_bonus import compute_internal_bonuses
 from core.live_projection import (
-    load_base_division_classement, is_gameweek_archived, division_delta, combined_division_standings,
+    is_gameweek_archived, division_delta, combined_division_standings, league_setup,
 )
 
 
@@ -42,7 +43,18 @@ def _stats_from_row(row: dict) -> dict:
     buts_pour/buts_contre/victory/...) vers la forme stockee en base
     (score+/score-/victory/..., cf. db/schema.sql) -- la meme forme que
     load_base_division_classement lit en entree, necessaire pour pouvoir
-    enchainer plusieurs journees d'affilee dans rebuild_division_archive."""
+    enchainer plusieurs journees d'affilee dans rebuild_division_archive.
+    pichichi/mur/bonus_champion/bonus_podium AJOUTES (retour utilisateur
+    2026-08-24, "recupere la logique de points qu'on a definie dans le
+    document partage avec Ilan, on n'a pas besoin de reinventer la roue") --
+    core.internal_bonus.compute_internal_bonuses (deja audite/corrige avec
+    Ilan, deja utilise tel quel par le chemin LIVE de resolve_division_rows)
+    est maintenant AUSSI appele a l'archivage, au lieu de laisser ces
+    bonus retomber a 0 des qu'une journee est archivee -- meme solution que
+    celle documentee dans Reponse_audit_pour_Ilan.md section "Regeneration
+    de l'archive en cours de saison" (recalculer depuis les matchs bruts,
+    jamais improviser une nouvelle formule)."""
+    bonus = row.get("bonus_details") or {}
     return {
         "teamName": row.get("teamName", ""),
         "victory": row["victory"], "draw": row["draw"], "defeat": row["defeat"],
@@ -51,6 +63,8 @@ def _stats_from_row(row: dict) -> dict:
         "points_pond": row["points_pond"],
         "cleanSheet": row["cleanSheet"], "manita": row["manita"], "on_fire": row["on_fire"],
         "grotaldo": row["grotaldo"], "owngoals": row["owngoals"],
+        "pichichi": bonus.get("Pichichi", 0), "mur": bonus.get("Le_Mur", 0),
+        "bonus_champion": bonus.get("Bonus_Champion", 0), "bonus_podium": bonus.get("Bonus_Podium", 0),
     }
 
 
@@ -70,8 +84,14 @@ def archive_closed_gameweek_if_needed(sb, league: dict, closed_game_week: int, t
     season = league["seasonSearch"]
     done = 0
 
+    # Une seule fois pour toute la ligue (internal_cfg/last_gameweek/
+    # league_size ne dependent pas de la division) -- meme fonction que le
+    # chemin live (scripts/live_job.py::poll_league), reutilisee ici pour ne
+    # pas dupliquer le calcul de last_gameweek (cf. league_setup, cache 1h).
+    setup = league_setup(sb, league, list(range(1, total_divisions + 1)), closed_game_week)
+
     for division in range(1, total_divisions + 1):
-        base_by_user = load_base_division_classement(sb, short_id, season, division)
+        base_by_user = setup["base_by_division"].get(division, {})
 
         capture = capture_division_journee(short_id, season, division, closed_game_week)
         if capture is None:
@@ -92,6 +112,11 @@ def archive_closed_gameweek_if_needed(sb, league: dict, closed_game_week: int, t
 
         delta_rows = division_delta(division_matches, division, closed_game_week, league, total_divisions)
         combined = combined_division_standings(base_by_user, delta_rows)
+        compute_internal_bonuses(
+            combined, division, closed_game_week, setup["last_gameweek"],
+            setup["league_size"], setup["season_number"], setup["season_start"], league["nom"],
+            setup["internal_cfg"], division_matches=division_matches,
+        )
 
         for row in combined:
             sb.table("league_classement_archive").upsert({
@@ -133,10 +158,21 @@ def rebuild_division_archive(sb, league: dict, division: int, total_divisions: i
     if not final_snapshots:
         return 0
 
+    # last_gameweek/internal_cfg calcules une seule fois pour toute la
+    # reconstruction (ne dependent pas de la journee rejouee) -- game_week
+    # de reference = la plus recente connue, meme convention que le tick
+    # live (league_setup lit toujours "aujourd'hui", pas une journee passee).
+    setup = league_setup(sb, league, [division], final_snapshots[-1][0])
+
     base_by_user: dict[str, dict] = {}
     for game_week, division_matches in final_snapshots:
         delta_rows = division_delta(division_matches, division, game_week, league, total_divisions)
         combined_rows = combined_division_standings(base_by_user, delta_rows)
+        compute_internal_bonuses(
+            combined_rows, division, game_week, setup["last_gameweek"],
+            setup["league_size"], setup["season_number"], setup["season_start"], league["nom"],
+            setup["internal_cfg"], division_matches=division_matches,
+        )
         base_by_user = {row["userId"]: _stats_from_row(row) for row in combined_rows}
 
     now = datetime.now(timezone.utc).isoformat()

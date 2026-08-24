@@ -58,23 +58,31 @@ create table live_snapshots (
 -- Classements archives (fin de journee/saison) -- remplace
 -- <Ligue>/Classement/<saison>/<Ligue>_Classement_General_saison_*.json
 --
--- Ecrite par scripts/live_job.py (core/archive.py::archive_closed_gameweek_if_needed)
--- une fois qu'une journee est terminee (window_end depasse), jamais par le
--- site. `stats` est un sous-ensemble volontairement reduit de ce que
--- mpg_app archive (pas de Precieux/Grotaldo -- hors perimetre v1, voir
+-- Ecrite par scripts/live_job.py (core/archive.py::archive_closed_gameweek_if_needed,
+-- core/archive.py::rebuild_division_archive pour une correction) une fois
+-- qu'une journee est terminee (window_end depasse OU recapture manuelle),
+-- jamais par le site. `stats` est un sous-ensemble volontairement reduit de
+-- ce que mpg_app archive (pas de Precieux -- hors perimetre v1, voir
 -- core/live_projection.py cote mpg_app pour le futur port complet) :
 --   {
---     "teamName":      text,   -- nom d'equipe MPG (pas de registre managers en v1)
---     "victory":       int,
---     "draw":          int,
---     "defeat":        int,
+--     "teamName":       text,    -- nom d'equipe MPG (pas de registre managers en v1)
+--     "victory":        int,
+--     "draw":           int,
+--     "defeat":         int,
 --     "matches_joues":  int,
---     "score+":        int,    -- buts pour cumules
---     "score-":        int,    -- buts contre cumules
---     "points_pond":   numeric, -- points ponderes cumules, pour rang_ligue
---     "cleanSheet":    int,
---     "manita":        int,
---     "on_fire":       int
+--     "score+":         int,     -- buts pour cumules
+--     "score-":         int,     -- buts contre cumules
+--     "points_pond":    numeric, -- points ponderes cumules, pour rang_ligue
+--     "cleanSheet":     int,
+--     "manita":         int,
+--     "on_fire":        int,
+--     "grotaldo":       int,
+--     "owngoals":       int,
+--     "pichichi":       numeric, -- core.internal_bonus.compute_internal_bonuses,
+--     "mur":            numeric, -- recalcule A L'ARCHIVAGE (retour utilisateur
+--     "bonus_champion": numeric, -- 2026-08-24, "recupere la logique de points
+--     "bonus_podium":   numeric  -- qu'on a definie avec Ilan" -- meme fonction
+--                                -- que le chemin live, jamais improvisee)
 --   }
 -- ============================================================
 create table league_classement_archive (
