@@ -125,6 +125,24 @@
   // d'avance par ligue (12 a 18 selon la ligue).
   let leaguesByCode = {};
 
+  // Theme de couleur par ligue (bandeau/en-tete de tableau, cf. mpg-tokens.css
+  // ".mpg-head-*") -- les 6 ligues suivies sont fixes (League_Codes.json cote
+  // mpg_app) et leur nom encode deja le championnat reel qu'elles imitent
+  // (confirme par le rendu HTML du site d'Ilan, memes couleurs par ligue) :
+  // Camembert=France/L1, Rosbeef=Angleterre/PL, Tapas=Espagne/Liga,
+  // Calzone=Italie/SerieA, Ligue_2_EKT=France/L2, Champignons=C1/LDC.
+  const LEAGUE_THEME_BY_NOM = {
+    "ligue_camembert": "l1",
+    "rosbeef_league": "pl",
+    "liga_tapas": "liga",
+    "lega_calzone": "seriea",
+    "ligue_2_ekt": "l2",
+    "ligue_des_champignons": "ldc",
+  };
+  function leagueTheme(nom) {
+    return LEAGUE_THEME_BY_NOM[(nom || "").toLowerCase()] || "neutral";
+  }
+
   async function loadLeagueOptions() {
     const { data, error } = await supabase
       .from("leagues")
@@ -554,8 +572,9 @@
 
     const row = data[0];
     statusEl.textContent = "";
-    subtitleEl.textContent = `${league.nom.replace(/_/g, " ")} · Journée ${row.game_week}`
-      + `${row.is_live ? " · en direct" : " · dernière journée archivée"} · mis à jour ${new Date(row.updated_at).toLocaleString("fr-FR")}`;
+    subtitleEl.innerHTML = `${league.nom.replace(/_/g, " ")} · Journée ${row.game_week} · `
+      + `<span style="color:${row.is_live ? "var(--mpg-warning)" : "var(--mpg-success)"}">${row.is_live ? "en cours" : "terminée"}</span>`
+      + ` · mis à jour ${new Date(row.updated_at).toLocaleString("fr-FR")}`;
 
     const entries = row.data || [];
     populateUserSelect(entries);
@@ -572,7 +591,7 @@
 
     tableEl.innerHTML = `
       <div class="table-wrap">
-        <table class="mpg-table">
+        <table class="mpg-table mpg-head-${leagueTheme(league.nom)}">
           <thead><tr>
             <th>Rang</th><th>Équipe</th><th>Pts</th><th>J</th><th>V</th><th>N</th><th>D</th>
             <th>BP</th><th>BC</th><th>DG</th><th>Badges</th>

@@ -93,6 +93,21 @@
   // Supabase que division.html.
   let leaguesByCode = {};
 
+  // Theme de couleur par ligue (en-tete de tableau, cf. mpg-tokens.css
+  // ".mpg-head-*") -- meme mapping que division.html, voir le commentaire
+  // la-bas pour la justification (nom de ligue = championnat reel imite).
+  const LEAGUE_THEME_BY_NOM = {
+    "ligue_camembert": "l1",
+    "rosbeef_league": "pl",
+    "liga_tapas": "liga",
+    "lega_calzone": "seriea",
+    "ligue_2_ekt": "l2",
+    "ligue_des_champignons": "ldc",
+  };
+  function leagueTheme(nom) {
+    return LEAGUE_THEME_BY_NOM[(nom || "").toLowerCase()] || "neutral";
+  }
+
   async function loadLeagueOptions() {
     const { data, error } = await supabase
       .from("leagues")
@@ -217,8 +232,9 @@
     const gameWeeks = [...new Set(data.map(r => r.game_week))];
     const latestUpdate = data.reduce((max, r) => (r.updated_at > max ? r.updated_at : max), data[0].updated_at);
     const anyLive = data.some(r => r.is_live);
-    subtitleEl.textContent = `${league.nom.replace(/_/g, " ")} · ${data.length} division(s) · Journée ${gameWeeks.length === 1 ? gameWeeks[0] : gameWeeks.join("/")}`
-      + `${anyLive ? " · en direct" : " · dernière journée archivée"} · mis à jour ${new Date(latestUpdate).toLocaleString("fr-FR")}`;
+    subtitleEl.innerHTML = `${league.nom.replace(/_/g, " ")} · ${data.length} division(s) · Journée ${gameWeeks.length === 1 ? gameWeeks[0] : gameWeeks.join("/")} · `
+      + `<span style="color:${anyLive ? "var(--mpg-warning)" : "var(--mpg-success)"}">${anyLive ? "en cours" : "terminée"}</span>`
+      + ` · mis à jour ${new Date(latestUpdate).toLocaleString("fr-FR")}`;
 
     const entries = data.flatMap(row => (row.data || []).map(e => ({ ...e, division: row.division })));
     entries.sort((a, b) => (a.rang_ligue ?? Infinity) - (b.rang_ligue ?? Infinity));
@@ -226,7 +242,7 @@
 
     tableEl.innerHTML = `
       <div class="table-wrap">
-        <table class="mpg-table">
+        <table class="mpg-table mpg-head-${leagueTheme(league.nom)}">
           <thead><tr>
             <th>Rang</th><th>Équipe</th><th>Div</th><th>Pts</th><th>J</th><th>V</th><th>N</th><th>D</th>
             <th>BP</th><th>BC</th><th>DG</th><th>Badges</th>
