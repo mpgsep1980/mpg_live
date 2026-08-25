@@ -647,7 +647,11 @@ def compute_super_classement(sb) -> list[dict]:
             points = podium_points_map.get(place)
             if points is None:
                 continue
-            bonus_details[f"{league_code}_Podium_{place:02d}"] = points
+            # Nom de ligue (pas le code technique QLxxx, illisible cote site
+            # -- retour utilisateur 2026-08-25) : repli sur le code lui-meme
+            # si jamais absent de la table leagues.
+            league_label = (league_meta_by_code.get(league_code) or {}).get("nom", league_code)
+            bonus_details[f"{league_label}_Podium_{place:02d}"] = points
             stats["points"] += points
             podium_counts[uid] = podium_counts.get(uid, 0) + 1
 

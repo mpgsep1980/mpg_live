@@ -105,7 +105,7 @@ def _resolve_tied_group(
     sans pouvoir départager les équipes, on se réfère à l'API MPG") : si l'égalité
     persiste malgré les niveaux 4-6 -- vérifié réel sur Rosbeef_League D8 après J1,
     4 équipes encore MATHÉMATIQUEMENT à égalité totale (aucune n'a affronté toutes
-    les autres) -- et qu'un `mpg_ranks` ({teamId: rang officiel MPG}, cf.
+    les autres) -- et qu'un `mpg_ranks` ({userId: rang officiel MPG}, cf.
     core/api.py::get_division_live_ranks) est fourni et couvre TOUT le sous-groupe
     encore lié, on retombe sur l'ordre MPG lui-même plutôt que d'inventer un 7e
     critère mathématique non vérifié. `mpg_ranks` absent, ou ne couvrant pas tout
@@ -127,11 +127,6 @@ def _resolve_tied_group(
     if not mpg_ranks:
         return ranked
 
-    user_id_to_team_id = {
-        m[side]["userId"]: m[side]["teamId"]
-        for m in division_matches for side in ("home", "away")
-        if m[side].get("userId") in user_ids
-    }
     final: list[dict] = []
     i = 0
     while i < len(ranked):
@@ -140,10 +135,7 @@ def _resolve_tied_group(
             j += 1
         subgroup = ranked[i:j]
         if len(subgroup) > 1:
-            team_rank = {
-                t["userId"]: mpg_ranks.get(user_id_to_team_id.get(t["userId"]))
-                for t in subgroup
-            }
+            team_rank = {t["userId"]: mpg_ranks.get(t["userId"]) for t in subgroup}
             if all(v is not None for v in team_rank.values()):
                 subgroup = sorted(subgroup, key=lambda t: team_rank[t["userId"]])
         final.extend(subgroup)

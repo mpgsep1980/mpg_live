@@ -158,26 +158,37 @@ def get_division_matches(short_id: str, season_number: int, division_number: int
 
 
 def get_division_live_ranks(short_id: str, season_number: int, division_number: int, token: str = None) -> dict[str, int]:
-    """{teamId: rang} = classement COURANT de division tel qu'affiche par MPG
-    lui-meme (liveState.standings), 7e niveau de departage (retour utilisateur
-    2026-08-25, "si on arrive au bout des 6 criteres sans pouvoir departager
-    les equipes, on se refere a l'API MPG" -- cf. core/internal_bonus.py::
-    _resolve_tied_group). Verifie sur Rosbeef_League D8 : apres J1, 4 equipes
-    (Cool Rasta/Fc pig/Piedcarre/Totof) restent MATHEMATIQUEMENT a egalite
-    parfaite meme apres confrontation directe + buts exterieur (aucune n'a
-    affronte toutes les autres, deux paires de matchs nuls identiques) -- MPG
-    les departage quand meme via un critere non documente/non reproduit ici,
-    d'ou ce repli sur SON classement plutot que d'inventer un 7e critere au
-    hasard. Ne reflete que l'etat COURANT de MPG : n'a de sens que pour
-    departager la journee la PLUS RECENTE connue (courante ou tout juste
-    cloturee, tant qu'aucune journee suivante n'a demarre) -- jamais pour
-    corriger une journee archivee plus ancienne lors d'un rebuild complet."""
+    """{userId: rang} = classement COURANT de division tel qu'affiche par MPG
+    lui-meme (liveState.standings, remappe de teamId vers userId via
+    usersTeams -- meme reponse, pas d'appel supplementaire), 7e niveau de
+    departage (retour utilisateur 2026-08-25, "si on arrive au bout des 6
+    criteres sans pouvoir departager les equipes, on se refere a l'API MPG"
+    -- cf. core/internal_bonus.py::_resolve_tied_group). Verifie sur
+    Rosbeef_League D8 : apres J1, 4 equipes (Cool Rasta/Fc pig/Piedcarre/
+    Totof) restent MATHEMATIQUEMENT a egalite parfaite meme apres
+    confrontation directe + buts exterieur (aucune n'a affronte toutes les
+    autres, deux paires de matchs nuls identiques) -- MPG les departage quand
+    meme via un critere non documente/non reproduit ici, d'ou ce repli sur
+    SON classement plutot que d'inventer un 7e critere au hasard. Cle sur
+    userId (pas teamId) pour rester compatible avec toute source de
+    division_matches, y compris celles qui n'exposent pas teamId (ex. les
+    snapshots locaux mpg_app). Ne reflete que l'etat COURANT de MPG : n'a de
+    sens que pour departager la journee la PLUS RECENTE connue (courante ou
+    tout juste cloturee, tant qu'aucune journee suivante n'a demarre) --
+    jamais pour corriger une journee archivee plus ancienne lors d'un rebuild
+    complet."""
     division_id = f"mpg_division_{short_id}_{season_number}_{division_number}"
     url = f"{MPG_API}/division/{division_id}"
     r = requests.get(url, headers=build_headers(token), timeout=TIMEOUT)
     r.raise_for_status()
-    standings = r.json().get("liveState", {}).get("standings", {}) or {}
-    return {team_id: s["rank"] for team_id, s in standings.items() if "rank" in s}
+    data = r.json()
+    standings = data.get("liveState", {}).get("standings", {}) or {}
+    users_teams = data.get("usersTeams", {}) or {}
+    team_to_rank = {team_id: s["rank"] for team_id, s in standings.items() if "rank" in s}
+    return {
+        user_id: team_to_rank[team_id]
+        for user_id, team_id in users_teams.items() if team_id in team_to_rank
+    }
 
 
 def get_division_calendar(short_id: str, season_number: int, division_number: int, token: str = None) -> dict:
