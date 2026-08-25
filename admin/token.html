@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Token API — Live</title>
+<link rel="stylesheet" href="/mpg-tokens.css">
+<link rel="stylesheet" href="/theme.css">
+<style>
+  :root {
+    --green: var(--accent-green); --green-dark: var(--accent-green);
+    --err: #e2453d;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 24px 14px 60px; }
+  a.back-link { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); text-decoration: none; font-size: 0.85em; margin-bottom: 14px; }
+  a.back-link:hover { color: var(--accent-green); }
+  h1 { font-size: 1.4em; color: var(--text-navy); font-weight: 800; margin: 0 0 6px; }
+  .sub { font-size: 0.85em; color: var(--muted); margin-bottom: 18px; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px; margin-bottom: 14px;
+  }
+  .card h2 { font-size: 0.95em; margin: 0 0 10px; }
+  code.masked {
+    display: block; background: var(--card-alt); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; font-size: 0.82em; word-break: break-all;
+    margin-bottom: 10px;
+  }
+  .status-msg { display: block; color: var(--muted); font-size: 0.85em; }
+  .status-msg.ok { color: var(--green); }
+  .status-msg.err { color: var(--err); }
+
+  .gate-card {
+    max-width: 380px; margin: 60px auto; background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 20px; text-align: center;
+  }
+  .gate-card input[type="text"], .gate-card input[type="password"] {
+    display: block; width: 100%; margin: 12px 0; background: var(--card-alt); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; padding: 8px 10px; font-size: 0.95em; font-family: inherit;
+  }
+  .gate-card button { width: 100%; flex: none; background: var(--green); border-color: var(--green); color: #fff; }
+  .gate-status { display: block; text-align: center; color: var(--muted); font-size: 0.85em; margin-top: 8px; }
+  .gate-status.err { color: var(--err); }
+
+  .howto {
+    font-size: 0.85em; line-height: 1.5; color: var(--text);
+    background: var(--card-alt); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; margin-bottom: 12px;
+  }
+  .howto code { background: none; padding: 0; }
+
+  textarea {
+    width: 100%; min-height: 100px; background: var(--card-alt); border: 1px solid var(--border);
+    color: var(--text); border-radius: 8px; padding: 8px 10px; font-family: monospace;
+    font-size: 0.8em; resize: vertical;
+  }
+  .btn-row { display: flex; gap: 8px; margin-top: 10px; }
+  button {
+    flex: 1; border-radius: 8px; padding: 8px 12px; font-size: 0.85em; font-weight: 700;
+    cursor: pointer; border: 1px solid var(--border); background: var(--card-alt); color: var(--text);
+  }
+  button.primary { background: var(--green); border-color: var(--green); color: #fff; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+</style>
+</head>
+<body>
+<div class="app-header">
+  <a class="app-title" href="/">MPG</a>
+  <nav>
+    <a href="/">Managers</a>
+    <a href="/poules">Poules</a>
+    <a href="/classement-ligue">Classement ligue</a>
+    <a href="/super-classement">Super classement</a>
+    <a href="/simulator">Simulateur</a>
+    <a href="/comptes">Comptes</a>
+    <a href="/config">Barèmes</a>
+    <a href="/token" class="active">Token API</a>
+  </nav>
+</div>
+<div class="wrap">
+  <div id="gate" class="gate-card">
+    <p>Réservé aux admins.</p>
+    <input type="text" id="gate-userid" placeholder="Identifiant admin" autocomplete="username">
+    <input type="password" id="gate-pw" placeholder="Mot de passe" autocomplete="current-password">
+    <button id="gate-login">Se connecter</button>
+    <div class="gate-status err" id="gate-msg"></div>
+  </div>
+
+  <div id="main-content" style="display:none;">
+  <a class="back-link" href="/">‹ Managers</a>
+  <h1>Token API</h1>
+  <div class="sub">Utilisé pour toutes les requêtes vers l'API MPG (score live, compositions...).</div>
+
+  <div class="card">
+    <h2>Statut actuel</h2>
+    <div id="current-status">Chargement…</div>
+  </div>
+
+  <div class="card">
+    <h2>Mettre à jour le token</h2>
+    <div class="howto">
+      Pour récupérer un nouveau token : ouvrir <a href="https://mpg.football" target="_blank" rel="noopener">mpg.football</a>
+      dans Chrome → <code>F12</code> → onglet <b>Réseau</b> → filtrer <code>dashboard</code> →
+      dans les en-têtes de la requête, copier la valeur de <b>Authorization</b>.
+    </div>
+    <textarea id="new-token" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."></textarea>
+    <div class="btn-row">
+      <button id="btn-test">Tester</button>
+      <button id="btn-save" class="primary">Enregistrer</button>
+    </div>
+    <span id="new-status" class="status-msg"></span>
+  </div>
+  </div>
+</div>
+
+<script>
+// Nav reservee aux admins (retour utilisateur 2026-08-23 : "à garder pour
+// le ou les admins que je désigne") -- masque les 4 liens admin-only du nav
+// tant que la session n'est pas authentifiee comme un admin (redondant avec
+// le gate de CETTE page, mais coherent avec les autres pages du site).
+(async function hideAdminNavIfNeeded() {
+  try {
+    const res = await fetch('/api/auth/status');
+    const status = await res.json();
+    if (!status.isAdmin) {
+      document.querySelectorAll(
+        '.app-header nav a[href="/simulator"], .app-header nav a[href="/comptes"], .app-header nav a[href="/config"], .app-header nav a[href="/token"]'
+      ).forEach(a => a.remove());
+    }
+  } catch (err) { /* pas bloquant */ }
+})();
+
+async function loadStatus() {
+  const el = document.getElementById('current-status');
+  try {
+    const res = await fetch('/api/token');
+    const data = await res.json();
+    if (!data.isSet) {
+      el.innerHTML = '<span class="status-msg err">Aucun token enregistré.</span>';
+      return;
+    }
+    el.innerHTML = `
+      <code class="masked">${data.masked}</code>
+      <button id="btn-test-current">Tester</button>
+      <span id="current-test-status" class="status-msg"></span>`;
+    document.getElementById('btn-test-current').addEventListener('click', async () => {
+      const statusEl = document.getElementById('current-test-status');
+      statusEl.textContent = 'Test en cours…';
+      statusEl.className = 'status-msg';
+      const r = await fetch('/api/token/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const d = await r.json();
+      statusEl.textContent = d.message;
+      statusEl.className = `status-msg ${d.ok ? 'ok' : 'err'}`;
+    });
+  } catch (err) {
+    el.innerHTML = `<span class="status-msg err">Erreur : ${err.message}</span>`;
+  }
+}
+
+const textarea = document.getElementById('new-token');
+const btnTest = document.getElementById('btn-test');
+const btnSave = document.getElementById('btn-save');
+const newStatus = document.getElementById('new-status');
+
+function syncButtons() {
+  const disabled = !textarea.value.trim();
+  btnTest.disabled = disabled;
+  btnSave.disabled = disabled;
+}
+textarea.addEventListener('input', syncButtons);
+syncButtons();
+
+btnTest.addEventListener('click', async () => {
+  newStatus.textContent = 'Test en cours…';
+  newStatus.className = 'status-msg';
+  const res = await fetch('/api/token/test', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: textarea.value.trim() }),
+  });
+  const data = await res.json();
+  newStatus.textContent = data.message;
+  newStatus.className = `status-msg ${data.ok ? 'ok' : 'err'}`;
+});
+
+btnSave.addEventListener('click', async () => {
+  const res = await fetch('/api/token', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: textarea.value.trim() }),
+  });
+  const data = await res.json();
+  if (data.saved) {
+    newStatus.textContent = 'Token enregistré.';
+    newStatus.className = 'status-msg ok';
+    textarea.value = '';
+    syncButtons();
+    loadStatus();
+  } else {
+    newStatus.textContent = `Erreur : ${data.error || 'inconnue'}`;
+    newStatus.className = 'status-msg err';
+  }
+});
+
+// Page reservee aux admins (retour utilisateur 2026-08-23 : "à garder pour
+// le ou les admins que je désigne") -- meme patron de gate que comptes.html/
+// simulator.html/admin.html.
+async function attemptGateLogin() {
+  const userId = document.getElementById('gate-userid').value.trim();
+  const password = document.getElementById('gate-pw').value;
+  const msgEl = document.getElementById('gate-msg');
+  msgEl.textContent = '';
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) { msgEl.textContent = data.error || 'Erreur'; return; }
+    const statusRes = await fetch('/api/auth/status');
+    const status = await statusRes.json();
+    if (!status.isAdmin) {
+      msgEl.textContent = "Identifiants valides, mais ce compte n'est pas admin.";
+      await fetch('/api/auth/logout', { method: 'POST' });
+      return;
+    }
+    document.getElementById('gate').style.display = 'none';
+    document.getElementById('main-content').style.display = 'block';
+    loadStatus();
+  } catch (err) {
+    msgEl.textContent = err.message;
+  }
+}
+document.getElementById('gate-login').addEventListener('click', attemptGateLogin);
+document.getElementById('gate-pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') attemptGateLogin(); });
+
+(async function initGate() {
+  const res = await fetch('/api/auth/status');
+  const status = await res.json();
+  if (status.isAdmin) {
+    document.getElementById('gate').style.display = 'none';
+    document.getElementById('main-content').style.display = 'block';
+    loadStatus();
+  }
+})();
+</script>
+</body>
+</html>

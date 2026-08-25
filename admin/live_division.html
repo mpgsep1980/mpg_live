@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live — Ligue 2 ÉKT</title>
+<link rel="stylesheet" href="/mpg-tokens.css">
+<link rel="stylesheet" href="/theme.css">
+<style>
+  :root {
+    --green: var(--accent-green); --green-dark: var(--accent-green);
+    --live-red: #e0393e; --ball-real: #16201a; --ball-mpg: var(--accent-green);
+    --ball-csc-classique: #e0b400;
+  }
+  .wrap { max-width: 420px; margin: 0 auto; padding: 24px 14px 60px; }
+
+  header { text-align: center; margin-bottom: 18px; }
+  header h1 { font-size: 1.3em; margin: 0 0 6px; color: var(--text-navy); font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  header .sub { font-size: 0.8em; color: var(--muted); display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .controls {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    flex-wrap: wrap; margin-bottom: 8px;
+  }
+  #division-select, #league-select, #gameweek-input, #manager-select {
+    background: var(--card-alt); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 4px 8px; font-size: 0.7em; font-weight: 600;
+    font-family: inherit; cursor: pointer;
+  }
+  #gameweek-input { width: 3.5em; cursor: text; }
+  .gw-label { font-size: 0.7em; color: var(--muted); }
+  .live-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--live-red);
+    display: inline-block; animation: pulse 1.4s infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+  .match-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 18px; margin-bottom: 16px;
+  }
+  .score-row {
+    display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px;
+  }
+  .team-name { font-weight: 700; font-size: 0.95em; text-align: center; }
+  .team-name .sub-team { display: block; font-weight: 400; font-size: 0.78em; color: var(--muted); margin-top: 2px; }
+  .score { font-size: 2em; font-weight: 800; font-variant-numeric: tabular-nums; text-align: center; white-space: nowrap; }
+
+  .scorers { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; margin-top: 14px; }
+  .scorers-col { display: flex; flex-direction: column; gap: 6px; }
+  .scorers-col.away { align-items: flex-end; text-align: right; }
+  .scorer-row { display: flex; align-items: center; gap: 6px; font-size: 0.82em; }
+  .scorers-col.away .scorer-row { flex-direction: row-reverse; }
+  .ball { flex: none; width: 11px; height: 11px; border-radius: 50%; }
+  .ball.real { background: var(--ball-real); }
+  .ball.mpg { background: var(--ball-mpg); }
+  /* CSC Rotaldo (malus, 1 tous les 3 Rotaldo) en rouge, distinct du CSC
+     "classique" (but contre son camp reel d'un joueur adverse aligne dans ce
+     match) en jaune -- retour utilisateur 2026-08-23, cf. admin/manager.html
+     pour le meme correctif. */
+  .ball.csc { background: var(--live-red); }
+  .ball.real_og { background: var(--ball-csc-classique); }
+  .scorer-time { color: var(--muted); font-size: 0.85em; }
+  .no-scorer { color: var(--muted); font-size: 0.8em; font-style: italic; }
+
+  .legend {
+    display: flex; justify-content: center; gap: 18px; margin-top: 24px;
+    font-size: 0.76em; color: var(--muted);
+  }
+  .legend span { display: flex; align-items: center; gap: 6px; }
+
+  .position-block { margin-top: 14px; }
+  .position-label {
+    font-size: 0.66em; text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--muted); text-align: center; margin: 10px 0 6px;
+    border-top: 1px solid var(--border); padding-top: 10px;
+  }
+  .player-row {
+    display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+    gap: 8px; padding: 3px 0;
+  }
+  .player { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .player.away { flex-direction: row-reverse; text-align: right; }
+  .player-name { font-size: 0.8em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row-sep { text-align: center; color: var(--border); font-size: 0.7em; }
+  .badge {
+    flex: none; width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.75em; font-weight: 700; color: #10160f;
+    font-variant-numeric: tabular-nums; position: relative;
+  }
+  .badge.note-high { background: #4caf50; color: #fff; }
+  .badge.note-mid { background: #d9a441; }
+  .badge.note-low { background: #c9484a; color: #fff; }
+  .badge.note-none { background: var(--border); color: var(--muted); }
+  .captain-flag {
+    position: absolute; top: -5px; right: -5px; width: 14px; height: 14px;
+    border-radius: 50%; background: #2b6fd1; color: #fff; font-size: 0.58em;
+    display: flex; align-items: center; justify-content: center; font-weight: 800;
+    border: 1.5px solid var(--card);
+  }
+  .goal-flag {
+    position: absolute; bottom: -5px; right: -5px; width: 14px; height: 14px;
+    border-radius: 50%; background: var(--ball-mpg);
+    border: 1.5px solid var(--card);
+  }
+
+  .status-msg { display: block; text-align: center; color: var(--muted); font-size: 0.85em; margin-top: 20px; }
+  .status-msg.err { color: #c9484a; }
+
+  .classement-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 14px; margin-bottom: 16px; overflow-x: auto;
+  }
+  .classement-title {
+    font-size: 0.78em; font-weight: 700; color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.5px; margin: 0 0 10px; text-align: center;
+  }
+  .classement-table { width: 100%; border-collapse: collapse; font-size: 0.78em; white-space: nowrap; }
+  .classement-table th, .classement-table td { padding: 5px 7px; text-align: center; }
+  .classement-table th { color: var(--muted); font-weight: 600; font-size: 0.9em; }
+  .classement-table td:nth-child(2) { text-align: left; }
+  .classement-table tbody tr { border-top: 1px solid var(--border); cursor: pointer; }
+  .classement-table tbody tr:hover { background: var(--card-alt); }
+  .classement-table td.points { font-weight: 700; color: var(--green); }
+  .classement-table td.badge-count { color: var(--muted); }
+  .classement-table td.badge-count.active { color: var(--text); font-weight: 700; }
+
+  .team-name.clickable { cursor: pointer; }
+  .team-name.clickable:hover { color: var(--green); }
+
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: 24px 12px; overflow-y: auto; z-index: 10;
+  }
+  .modal-overlay.hidden { display: none; }
+  .modal-box {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 14px;
+    max-width: 420px; width: 100%; padding: 16px;
+  }
+  .modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .modal-header h2 { font-size: 1.05em; margin: 0; color: var(--green); }
+  .modal-header h2 a { color: inherit; text-decoration: none; }
+  .modal-header h2 a:hover { text-decoration: underline; }
+  #modal-close {
+    background: none; border: none; color: var(--muted); font-size: 1.4em;
+    line-height: 1; cursor: pointer; padding: 2px 6px;
+  }
+  .manager-match-label {
+    font-size: 0.72em; color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.5px; margin: 14px 0 6px;
+  }
+
+  a.back-link { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); text-decoration: none; font-size: 0.85em; margin-bottom: 12px; }
+  a.back-link:hover { color: var(--green); }
+</style>
+</head>
+<body>
+<div class="app-header">
+  <a class="app-title" href="/">MPG</a>
+  <nav>
+    <a href="/">Managers</a>
+    <a href="/poules">Poules</a>
+    <a href="/classement-ligue">Classement ligue</a>
+    <a href="/super-classement">Super classement</a>
+    <a href="/simulator">Simulateur</a>
+    <a href="/comptes">Comptes</a>
+    <a href="/config">Barèmes</a>
+    <a href="/token">Token API</a>
+  </nav>
+</div>
+<div class="wrap">
+  <a class="back-link" id="back-link" href="/poules">‹ Toutes les poules</a>
+  <header>
+    <h1><span id="league-name">…</span></h1>
+    <div class="controls">
+      <select id="league-select"><option>…</option></select>
+      <span class="gw-label">J</span><input id="gameweek-input" type="number" min="1" value="1">
+      <select id="division-select"><option>…</option></select>
+      <select id="manager-select"><option value="">Manager…</option></select>
+    </div>
+    <div class="sub"><span class="live-dot"></span> <span id="updated">chargement…</span></div>
+  </header>
+
+  <div id="classement" class="classement-card"><span class="status-msg">Chargement…</span></div>
+
+  <div id="matches"><span class="status-msg">Chargement…</span></div>
+
+  <div class="legend">
+    <span><span class="ball real"></span> But classique (réel)</span>
+    <span><span class="ball mpg"></span> But MPG</span>
+    <span><span class="ball csc"></span> CSC Rotaldo</span>
+    <span><span class="ball real_og"></span> CSC classique</span>
+  </div>
+</div>
+
+<div id="manager-modal" class="modal-overlay hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2 id="modal-manager-name">Manager</h2>
+      <button id="modal-close" aria-label="Fermer">×</button>
+    </div>
+    <div id="modal-body"><span class="status-msg">Chargement…</span></div>
+  </div>
+</div>
+
+<script>
+// Nav reservee aux admins (retour utilisateur 2026-08-23 : "à garder pour
+// le ou les admins que je désigne") -- masque les 4 liens admin-only du nav
+// tant que la session n'est pas authentifiee comme un admin (cf.
+// core/auth.py::ADMIN_USER_IDS). Ne remplace PAS la protection reelle de
+// chaque page (gate propre a admin.html/comptes.html/simulator.html/
+// token.html) -- sert juste a ne pas les ANNONCER a un visiteur non-admin.
+(async function hideAdminNavIfNeeded() {
+  try {
+    const res = await fetch('/api/auth/status');
+    const status = await res.json();
+    if (!status.isAdmin) {
+      document.querySelectorAll(
+        '.app-header nav a[href="/simulator"], .app-header nav a[href="/comptes"], .app-header nav a[href="/config"], .app-header nav a[href="/token"]'
+      ).forEach(a => a.remove());
+    }
+  } catch (err) { /* pas bloquant -- nav complete par defaut si le check echoue */ }
+})();
+
+const POSITION_LABELS = { 1: 'Gardien', 2: 'Défenseurs', 3: 'Milieux', 4: 'Attaquants' };
+const params = new URLSearchParams(location.search);
+
+let leagues = [];
+let currentLeague = params.get('ligue') || 'QLRBXDCX2';
+let currentSeason = params.get('season') || null;
+let currentGameweek = params.get('gameweek') || '1';
+let currentDivision = params.get('division');
+let lastData = null;
+// id = userId d'origine (fil d'Ariane manager -> poules -> live), propage
+// tel quel si present -- retour utilisateur 2026-08-14 : "on n'a pas de
+// bouton pour revenir a la page precedente" depuis le detail d'un match
+// ouvert dans "Toutes les poules".
+const originUserId = params.get('id');
+(function initBackLink() {
+  const back = document.getElementById('back-link');
+  const url = new URL('/poules', location.origin);
+  url.searchParams.set('ligue', currentLeague);
+  if (currentSeason) url.searchParams.set('season', currentSeason);
+  url.searchParams.set('gameweek', currentGameweek);
+  if (originUserId) url.searchParams.set('id', originUserId);
+  back.href = url.pathname + url.search;
+})();
+
+function noteClass(note) {
+  if (note === null || note === undefined) return 'note-none';
+  if (note >= 6) return 'note-high';
+  if (note >= 4.5) return 'note-mid';
+  return 'note-low';
+}
+
+function playerBadge(p, isCaptain) {
+  const note = p.effective_note;
+  const cls = noteClass(note);
+  const noteText = note === null || note === undefined ? '–' : note.toFixed(1).replace(/\.0$/, '');
+  const goalFlag = p.but_mpg_bonus ? '<span class="goal-flag"></span>' : '';
+  return `<div class="badge ${cls}">${noteText}${isCaptain ? '<span class="captain-flag">C</span>' : ''}${goalFlag}</div>`;
+}
+
+function playersByPosition(team) {
+  const groups = { 1: [], 2: [], 3: [], 4: [] };
+  Object.entries(team.players).forEach(([playerId, p]) => {
+    if (groups[p.position]) groups[p.position].push({ ...p, playerId });
+  });
+  return groups;
+}
+
+function playersHtml(match) {
+  const homeGroups = playersByPosition(match.home);
+  const awayGroups = playersByPosition(match.away);
+  const homeCaptainId = Object.keys(match.home.players).find(id => match.home.players[id].bonus_capitaine > 0);
+  const awayCaptainId = Object.keys(match.away.players).find(id => match.away.players[id].bonus_capitaine > 0);
+
+  return [1, 2, 3, 4].map(pos => {
+    const homeList = homeGroups[pos];
+    const awayList = awayGroups[pos];
+    const maxRows = Math.max(homeList.length, awayList.length);
+    let rows = '';
+    for (let i = 0; i < maxRows; i++) {
+      const hp = homeList[i];
+      const ap = awayList[i];
+      rows += `
+        <div class="player-row">
+          <div class="player">
+            ${hp ? playerBadge(hp, hp.playerId === homeCaptainId) : ''}
+            <span class="player-name">${hp ? hp.name : ''}</span>
+          </div>
+          <div class="row-sep">·</div>
+          <div class="player away">
+            ${ap ? playerBadge(ap, ap.playerId === awayCaptainId) : ''}
+            <span class="player-name">${ap ? ap.name : ''}</span>
+          </div>
+        </div>`;
+    }
+    return `<div class="position-block"><div class="position-label">${POSITION_LABELS[pos]}</div>${rows}</div>`;
+  }).join('');
+}
+
+function eventDateLabel(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+}
+
+function scorersHtml(team, side) {
+  if (!team.goal_events || team.goal_events.length === 0) {
+    return '<div class="no-scorer">—</div>';
+  }
+  // "date" absente sur mpg/csc (pas de vrai match unique associe) -- ne
+  // departage QUE si les deux evenements en ont une, sinon retombe sur la
+  // minute comme avant (retour utilisateur 2026-08-16 : une journee MPG
+  // etale ses vrais matchs sur plusieurs jours, une simple minute suffit
+  // sinon a mal ordonner les buts entre plusieurs matchs).
+  const sorted = [...team.goal_events].sort((a, b) => {
+    if (a.date && b.date && a.date !== b.date) return a.date < b.date ? -1 : 1;
+    const ta = a.time ? parseInt(a.time) : 999;
+    const tb = b.time ? parseInt(b.time) : 999;
+    return ta - tb;
+  });
+  return sorted.map(ev => `
+    <div class="scorer-row">
+      <span class="ball ${ev.type}"></span>
+      <span>${ev.name}</span>
+      ${(ev.time || ev.date) ? `<span class="scorer-time">${ev.time || ''}${ev.date ? ` · ${eventDateLabel(ev.date)}` : ''}</span>` : ''}
+    </div>`).join('');
+}
+
+function teamNameHtml(team) {
+  const label = team.realName || team.userId || '';
+  return `<div class="team-name clickable" data-user-id="${team.userId || ''}" data-real-name="${label}">${label}<span class="sub-team">${team.teamName || ''}</span></div>`;
+}
+
+function matchHtml(match) {
+  const home = match.home, away = match.away;
+  return `
+    <div class="match-card">
+      <div class="score-row">
+        ${teamNameHtml(home)}
+        <div class="score"><span class="side">${home.score}</span> - <span class="side">${away.score}</span></div>
+        ${teamNameHtml(away)}
+      </div>
+      <div class="scorers">
+        <div class="scorers-col home">${scorersHtml(home, 'home')}</div>
+        <div class="scorers-col away">${scorersHtml(away, 'away')}</div>
+      </div>
+      ${playersHtml(match)}
+    </div>`;
+}
+
+function populateDivisionSelect(divisions) {
+  const select = document.getElementById('division-select');
+  const numbers = Object.keys(divisions).map(Number).sort((a, b) => a - b);
+  const previousValue = select.value;
+
+  select.innerHTML = numbers.map(n => `<option value="${n}">Division ${n}</option>`).join('');
+
+  if (numbers.map(String).includes(currentDivision)) {
+    select.value = currentDivision;
+  } else if (numbers.map(String).includes(previousValue)) {
+    select.value = previousValue;
+    currentDivision = previousValue;
+  } else if (numbers.length) {
+    select.value = String(numbers[0]);
+    currentDivision = String(numbers[0]);
+  }
+}
+
+function updateUrl() {
+  const url = new URL(location.href);
+  url.searchParams.set('ligue', currentLeague);
+  url.searchParams.set('season', currentSeason);
+  url.searchParams.set('gameweek', currentGameweek);
+  if (currentDivision) url.searchParams.set('division', currentDivision);
+  history.replaceState(null, '', url);
+}
+
+function attachManagerClicks(container) {
+  container.querySelectorAll('.team-name.clickable[data-user-id]').forEach(el => {
+    if (!el.dataset.userId) return;
+    el.addEventListener('click', () => openManagerModal(el.dataset.userId, el.dataset.realName));
+  });
+}
+
+function renderDivision() {
+  const matches = (lastData && lastData.divisions[currentDivision]) || [];
+  const container = document.getElementById('matches');
+  container.innerHTML = matches.length
+    ? matches.map(matchHtml).join('')
+    : '<span class="status-msg">Aucun match trouvé pour cette division.</span>';
+  attachManagerClicks(container);
+  document.title = `Live — Division ${currentDivision}`;
+  chargerClassement();
+}
+
+function classementRowHtml(row, position) {
+  const cs = row.cleanSheet || 0, manita = row.manita || 0, onFire = row.on_fire || 0;
+  const cell = (v) => `<td class="badge-count${v ? ' active' : ''}">${v || 0}</td>`;
+  return `
+    <tr data-user-id="${row.userId || ''}" data-real-name="${row.player_name || ''}">
+      <td>${position}</td>
+      <td>${row.player_name || ''}<span class="sub-team" style="display:block;font-weight:400;">${row.team_name || ''}</span></td>
+      <td class="points">${row.points_division ?? 0}</td>
+      <td>${row.victory ?? 0}/${row.draw ?? 0}/${row.defeat ?? 0}</td>
+      <td>${(row['score+'] ?? 0)}-${(row['score-'] ?? 0)}</td>
+      ${cell(cs)}${cell(manita)}${cell(onFire)}
+    </tr>`;
+}
+
+async function chargerClassement() {
+  const container = document.getElementById('classement');
+  if (!currentDivision) {
+    container.innerHTML = '<span class="status-msg">Choisissez une division.</span>';
+    return;
+  }
+  try {
+    const res = await fetch(`/api/division-classement?shortId=${currentLeague}&season=${currentSeason}&gameweek=${currentGameweek}&division=${currentDivision}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    const rows = data.rows || [];
+    if (!rows.length) {
+      container.innerHTML = '<span class="status-msg">Classement indisponible pour cette division.</span>';
+      return;
+    }
+    container.innerHTML = `
+      <div class="classement-title">Classement provisoire — Division ${currentDivision}</div>
+      <table class="classement-table">
+        <thead><tr>
+          <th>#</th><th>Manager</th><th>Pts</th><th>V/N/D</th><th>Buts</th>
+          <th title="Clean sheets">CS</th><th title="Manitas">🖐️</th><th title="En feu (≥3 buts d'écart)">🔥</th>
+        </tr></thead>
+        <tbody>${rows.map((r, i) => classementRowHtml(r, i + 1)).join('')}</tbody>
+      </table>`;
+    container.querySelectorAll('tr[data-user-id]').forEach(el => {
+      if (!el.dataset.userId) return;
+      el.addEventListener('click', () => openManagerModal(el.dataset.userId, el.dataset.realName));
+    });
+  } catch (err) {
+    container.innerHTML = `<span class="status-msg err">Erreur classement : ${err.message}</span>`;
+  }
+}
+
+document.getElementById('division-select').addEventListener('change', (e) => {
+  currentDivision = e.target.value;
+  updateUrl();
+  renderDivision();
+});
+
+document.getElementById('gameweek-input').addEventListener('change', (e) => {
+  currentGameweek = e.target.value || '1';
+  currentDivision = null;
+  updateUrl();
+  charger();
+});
+
+document.getElementById('league-select').addEventListener('change', (e) => {
+  currentLeague = e.target.value;
+  const league = leagues.find(l => l.code === currentLeague);
+  currentSeason = league ? String(league.seasonSearch) : currentSeason;
+  currentDivision = null;
+  updateUrl();
+  document.getElementById('league-name').textContent = league ? league.nom : currentLeague;
+  document.title = `Live — ${league ? league.nom : currentLeague}`;
+  charger();
+});
+
+async function loadManagers() {
+  const res = await fetch('/api/managers');
+  const data = await res.json();
+  const select = document.getElementById('manager-select');
+  select.innerHTML = '<option value="">👤 Manager…</option>' +
+    (data.managers || []).map(m => `<option value="${m.userId}">${m.realName}</option>`).join('');
+}
+
+document.getElementById('manager-select').addEventListener('change', (e) => {
+  const select = e.target;
+  const userId = select.value;
+  if (!userId) return;
+  const label = select.options[select.selectedIndex].textContent;
+  openManagerModal(userId, label);
+});
+
+async function loadLeagues() {
+  const res = await fetch('/api/leagues');
+  const data = await res.json();
+  leagues = data.leagues || [];
+
+  const select = document.getElementById('league-select');
+  select.innerHTML = leagues.map(l => `<option value="${l.code}">${l.nom}</option>`).join('');
+
+  if (!leagues.find(l => l.code === currentLeague) && leagues.length) {
+    currentLeague = leagues[0].code;
+  }
+  select.value = currentLeague;
+
+  const league = leagues.find(l => l.code === currentLeague);
+  if (!currentSeason && league) currentSeason = String(league.seasonSearch);
+  document.getElementById('league-name').textContent = league ? league.nom : currentLeague;
+  document.title = `Live — ${league ? league.nom : currentLeague}`;
+  document.getElementById('gameweek-input').value = currentGameweek;
+}
+
+async function charger() {
+  try {
+    const res = await fetch(`/api/live-snapshot?shortId=${currentLeague}&season=${currentSeason}&gameweek=${currentGameweek}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.statusText);
+
+    lastData = data;
+    populateDivisionSelect(data.divisions);
+    renderDivision();
+
+    const updated = new Date(data.updatedAt);
+    document.getElementById('updated').textContent = `maj ${updated.toLocaleTimeString('fr-FR')}`;
+  } catch (err) {
+    document.getElementById('matches').innerHTML = `<span class="status-msg err">Erreur : ${err.message}</span>`;
+  }
+}
+
+function renderManagerMatches(matches) {
+  const body = document.getElementById('modal-body');
+  if (!matches.length) {
+    body.innerHTML = '<span class="status-msg">Aucun match en cours pour ce manager en ce moment.</span>';
+    return;
+  }
+  body.innerHTML = matches.map(m => `
+    <div class="manager-match-label">${m.ligueNom} · Division ${m.division} · J${m.gameweek}</div>
+    ${matchHtml({ home: m.team, away: m.opponent })}
+  `).join('');
+  attachManagerClicks(body);
+}
+
+async function openManagerModal(userId, label) {
+  // Le popover reste la vue rapide (retour utilisateur 2026-08-17 : "le
+  // popover est une stat interessante il faut donc le garder") -- le nom en
+  // titre devient un lien vers sa page complete (/manager?id=...) pour ne
+  // pas perdre la navigation ("ça risque de perdre la navigation"). Construit
+  // via DOM (textContent), pas innerHTML avec le nom interpole -- label vient
+  // d'une donnee de config (RealName), pas la peine de risquer une injection
+  // pour autant.
+  const nameEl = document.getElementById('modal-manager-name');
+  nameEl.innerHTML = '';
+  const nameLink = document.createElement('a');
+  nameLink.href = `/manager?id=${encodeURIComponent(userId)}`;
+  nameLink.textContent = label || 'Manager';
+  nameEl.appendChild(nameLink);
+  document.getElementById('modal-body').innerHTML = '<span class="status-msg">Chargement…</span>';
+  document.getElementById('manager-modal').classList.remove('hidden');
+  try {
+    const res = await fetch(`/api/live-manager?userId=${encodeURIComponent(userId)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    renderManagerMatches(data.matches);
+  } catch (err) {
+    document.getElementById('modal-body').innerHTML = `<span class="status-msg err">Erreur : ${err.message}</span>`;
+  }
+}
+
+function closeManagerModal() {
+  document.getElementById('manager-modal').classList.add('hidden');
+  document.getElementById('manager-select').value = '';
+}
+
+document.getElementById('modal-close').addEventListener('click', closeManagerModal);
+document.getElementById('manager-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'manager-modal') closeManagerModal();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeManagerModal();
+});
+
+(async function init() {
+  await loadLeagues();
+  await loadManagers();
+  await charger();
+  setInterval(charger, 30000);
+})();
+</script>
+</body>
+</html>

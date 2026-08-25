@@ -1,0 +1,380 @@
+:root {
+  /* Rayon de coin unique de la charte. */
+  --mpg-radius: 0.5rem;
+  --mpg-radius-sm: calc(var(--mpg-radius) - 4px);
+
+  /* --- Surfaces et textes --- */
+  --mpg-title: #161616;
+  --mpg-text-soft: #696d77;
+  --mpg-text-off: #b4b6bb;
+  --mpg-border-soft: #f5f6f6;
+
+  /* --- Action - bleu indigo --- */
+  --mpg-action: #4054cc;
+  --mpg-action-hover: #303f99;
+  --mpg-action-active: #202a66;
+  --mpg-action-soft: #f0f1fb;
+  --mpg-row-selected: #cfd4f2;
+
+  /* --- Etats --- */
+  --mpg-success: #349734;
+  --mpg-success-soft: #d0f1d0;
+  --mpg-warning: #ba760a;
+  --mpg-warning-soft: #feefd8;
+  --mpg-danger: #d4332d;
+  --mpg-danger-soft: #f8dedd;
+  --mpg-info: #161e8d;
+  --mpg-info-soft: #dadbeb;
+
+  /* --- Championnats : filets et pastilles --- */
+  --mpg-league-l1: #085fff;
+  --mpg-league-pl: #850291;
+  --mpg-league-liga: #d4332d;
+  --mpg-league-seriea: #09eeff;
+  --mpg-league-seriea-text: #0a9aa6;
+  --mpg-league-l2: #00ffce;
+  --mpg-league-l2-text: #00a382;
+  --mpg-league-ldc: #161e8d;
+  --mpg-league-super: #45c945;
+  --mpg-league-super-text: #226422;
+
+  /* --- En-tetes de tableau : fond opaque pale + texte sombre de la meme famille --- */
+  --mpg-head-l1-bg: #dfe8ff;
+  --mpg-head-l1-fg: #0b3f9c;
+  --mpg-head-pl-bg: #f2e0f4;
+  --mpg-head-pl-fg: #6a0274;
+  --mpg-head-liga-bg: #fbe1e0;
+  --mpg-head-liga-fg: #97231f;
+  --mpg-head-seriea-bg: #d9f6f9;
+  --mpg-head-seriea-fg: #076c76;
+  --mpg-head-l2-bg: #d8f8f0;
+  --mpg-head-l2-fg: #00705a;
+  --mpg-head-ldc-bg: #e0e2f2;
+  --mpg-head-ldc-fg: #161e8d;
+  --mpg-head-super-bg: #dff3df;
+  --mpg-head-super-fg: #1c5a1c;
+  --mpg-head-neutral-bg: #eceef2;
+  --mpg-head-neutral-fg: #3c4350;
+
+  /* --- Bandeau superieur et elements poses dessus --- */
+  --mpg-banner: linear-gradient(90deg, #5d9e78 0%, #568a8b 45%, #507a9b 100%);
+  --mpg-on-banner: #ffffff;
+  --mpg-on-banner-soft: rgba(255, 255, 255, 0.88);
+  --mpg-banner-layer-chip: rgba(0, 0, 0, 0.25);
+  --mpg-banner-layer-hover: rgba(255, 255, 255, 0.18);
+  --mpg-banner-layer-active: rgba(0, 0, 0, 0.62);
+  --mpg-banner-focus-ring: rgba(255, 255, 255, 0.95);
+
+  /* --- Echelle de notes de joueur --- */
+  --mpg-rating-excellent: #226422;
+  --mpg-rating-verygood: #349734;
+  --mpg-rating-good: #45c945;
+  --mpg-rating-average: #bfb100;
+  --mpg-rating-below: #807600;
+  --mpg-rating-weak: #ba760a;
+  --mpg-rating-veryweak: #d4332d;
+
+  /* --- Etiquettes de bonus : 16 tons nommes --- */
+  /* -bg fond plein 42% | -surface fond de carte 16% | -edge bordure de carte
+     -fg texte lisible | -line bordure d'etiquette 70% */
+  --mpg-tag-steel-bg: rgba(74, 103, 133, 0.42);
+  --mpg-tag-steel-surface: rgba(74, 103, 133, 0.16);
+  --mpg-tag-steel-edge: rgba(74, 103, 133, 0.4);
+  --mpg-tag-steel-fg: #384d64;
+  --mpg-tag-steel-line: rgba(74, 103, 133, 0.7);
+  --mpg-tag-success-bg: rgba(52, 151, 52, 0.42);
+  --mpg-tag-success-surface: rgba(52, 151, 52, 0.16);
+  --mpg-tag-success-edge: rgba(52, 151, 52, 0.4);
+  --mpg-tag-success-fg: #215f21;
+  --mpg-tag-success-line: rgba(52, 151, 52, 0.7);
+  --mpg-tag-fire-bg: rgba(226, 86, 15, 0.42);
+  --mpg-tag-fire-surface: rgba(226, 86, 15, 0.16);
+  --mpg-tag-fire-edge: rgba(226, 86, 15, 0.4);
+  --mpg-tag-fire-fg: #8c3509;
+  --mpg-tag-fire-line: rgba(226, 86, 15, 0.7);
+  --mpg-tag-grass-bg: rgba(47, 168, 21, 0.42);
+  --mpg-tag-grass-surface: rgba(47, 168, 21, 0.16);
+  --mpg-tag-grass-edge: rgba(47, 168, 21, 0.4);
+  --mpg-tag-grass-fg: #1c630c;
+  --mpg-tag-grass-line: rgba(47, 168, 21, 0.7);
+  --mpg-tag-amber-bg: rgba(192, 138, 4, 0.42);
+  --mpg-tag-amber-surface: rgba(192, 138, 4, 0.16);
+  --mpg-tag-amber-edge: rgba(192, 138, 4, 0.4);
+  --mpg-tag-amber-fg: #715102;
+  --mpg-tag-amber-line: rgba(192, 138, 4, 0.7);
+  --mpg-tag-gold-bg: rgba(165, 120, 10, 0.42);
+  --mpg-tag-gold-surface: rgba(165, 120, 10, 0.16);
+  --mpg-tag-gold-edge: rgba(165, 120, 10, 0.4);
+  --mpg-tag-gold-fg: #6a4d06;
+  --mpg-tag-gold-line: rgba(165, 120, 10, 0.7);
+  --mpg-tag-silver-bg: rgba(138, 143, 153, 0.42);
+  --mpg-tag-silver-surface: rgba(138, 143, 153, 0.16);
+  --mpg-tag-silver-edge: rgba(138, 143, 153, 0.4);
+  --mpg-tag-silver-fg: #54575d;
+  --mpg-tag-silver-line: rgba(138, 143, 153, 0.7);
+  --mpg-tag-bronze-bg: rgba(160, 90, 38, 0.42);
+  --mpg-tag-bronze-surface: rgba(160, 90, 38, 0.16);
+  --mpg-tag-bronze-edge: rgba(160, 90, 38, 0.4);
+  --mpg-tag-bronze-fg: #72401b;
+  --mpg-tag-bronze-line: rgba(160, 90, 38, 0.7);
+  --mpg-tag-danger-bg: rgba(212, 51, 45, 0.42);
+  --mpg-tag-danger-surface: rgba(212, 51, 45, 0.16);
+  --mpg-tag-danger-edge: rgba(212, 51, 45, 0.4);
+  --mpg-tag-danger-fg: #8a211d;
+  --mpg-tag-danger-line: rgba(212, 51, 45, 0.7);
+  --mpg-tag-violet-bg: rgba(123, 63, 181, 0.42);
+  --mpg-tag-violet-surface: rgba(123, 63, 181, 0.16);
+  --mpg-tag-violet-edge: rgba(123, 63, 181, 0.4);
+  --mpg-tag-violet-fg: #5f318b;
+  --mpg-tag-violet-line: rgba(123, 63, 181, 0.7);
+  --mpg-tag-pink-bg: rgba(214, 31, 122, 0.42);
+  --mpg-tag-pink-surface: rgba(214, 31, 122, 0.16);
+  --mpg-tag-pink-edge: rgba(214, 31, 122, 0.4);
+  --mpg-tag-pink-fg: #89144e;
+  --mpg-tag-pink-line: rgba(214, 31, 122, 0.7);
+  --mpg-tag-brown-bg: rgba(138, 106, 69, 0.42);
+  --mpg-tag-brown-surface: rgba(138, 106, 69, 0.16);
+  --mpg-tag-brown-edge: rgba(138, 106, 69, 0.4);
+  --mpg-tag-brown-fg: #614a30;
+  --mpg-tag-brown-line: rgba(138, 106, 69, 0.7);
+  --mpg-tag-teal-bg: rgba(13, 132, 148, 0.42);
+  --mpg-tag-teal-surface: rgba(13, 132, 148, 0.16);
+  --mpg-tag-teal-edge: rgba(13, 132, 148, 0.4);
+  --mpg-tag-teal-fg: #095762;
+  --mpg-tag-teal-line: rgba(13, 132, 148, 0.7);
+  --mpg-tag-indigo-bg: rgba(57, 73, 171, 0.42);
+  --mpg-tag-indigo-surface: rgba(57, 73, 171, 0.16);
+  --mpg-tag-indigo-edge: rgba(57, 73, 171, 0.4);
+  --mpg-tag-indigo-fg: #303e91;
+  --mpg-tag-indigo-line: rgba(57, 73, 171, 0.7);
+  --mpg-tag-faded-bg: rgba(107, 130, 153, 0.42);
+  --mpg-tag-faded-surface: rgba(107, 130, 153, 0.16);
+  --mpg-tag-faded-edge: rgba(107, 130, 153, 0.4);
+  --mpg-tag-faded-fg: #465463;
+  --mpg-tag-faded-line: rgba(107, 130, 153, 0.7);
+  --mpg-tag-neutral-bg: rgba(107, 114, 128, 0.42);
+  --mpg-tag-neutral-surface: rgba(107, 114, 128, 0.16);
+  --mpg-tag-neutral-edge: rgba(107, 114, 128, 0.4);
+  --mpg-tag-neutral-fg: #4b505a;
+  --mpg-tag-neutral-line: rgba(107, 114, 128, 0.7);
+}
+
+/* Mode sombre : seules les etiquettes de bonus sont redefinies dans le site
+   d'origine. Les autres jetons n'ont pas d'equivalent sombre - voir la note
+   du document d'accompagnement. */
+html.dark, .mpg-dark {
+  --mpg-tag-steel-bg: rgba(74, 103, 133, 0.45);
+  --mpg-tag-steel-surface: rgba(74, 103, 133, 0.22);
+  --mpg-tag-steel-edge: rgba(74, 103, 133, 0.4);
+  --mpg-tag-steel-fg: #a6b5c3;
+  --mpg-tag-steel-line: rgba(166, 181, 195, 0.7);
+  --mpg-tag-success-bg: rgba(52, 151, 52, 0.45);
+  --mpg-tag-success-surface: rgba(52, 151, 52, 0.22);
+  --mpg-tag-success-edge: rgba(52, 151, 52, 0.4);
+  --mpg-tag-success-fg: #a4d0a4;
+  --mpg-tag-success-line: rgba(164, 208, 164, 0.7);
+  --mpg-tag-fire-bg: rgba(226, 86, 15, 0.45);
+  --mpg-tag-fire-surface: rgba(226, 86, 15, 0.22);
+  --mpg-tag-fire-edge: rgba(226, 86, 15, 0.4);
+  --mpg-tag-fire-fg: #f2b191;
+  --mpg-tag-fire-line: rgba(242, 177, 145, 0.7);
+  --mpg-tag-grass-bg: rgba(47, 168, 21, 0.45);
+  --mpg-tag-grass-surface: rgba(47, 168, 21, 0.22);
+  --mpg-tag-grass-edge: rgba(47, 168, 21, 0.4);
+  --mpg-tag-grass-fg: #a8da9d;
+  --mpg-tag-grass-line: rgba(168, 218, 157, 0.7);
+  --mpg-tag-amber-bg: rgba(192, 138, 4, 0.45);
+  --mpg-tag-amber-surface: rgba(192, 138, 4, 0.22);
+  --mpg-tag-amber-edge: rgba(192, 138, 4, 0.4);
+  --mpg-tag-amber-fg: #e4cd93;
+  --mpg-tag-amber-line: rgba(228, 205, 147, 0.7);
+  --mpg-tag-gold-bg: rgba(165, 120, 10, 0.45);
+  --mpg-tag-gold-surface: rgba(165, 120, 10, 0.22);
+  --mpg-tag-gold-edge: rgba(165, 120, 10, 0.4);
+  --mpg-tag-gold-fg: #d5c08c;
+  --mpg-tag-gold-line: rgba(213, 192, 140, 0.7);
+  --mpg-tag-silver-bg: rgba(138, 143, 153, 0.45);
+  --mpg-tag-silver-surface: rgba(138, 143, 153, 0.22);
+  --mpg-tag-silver-edge: rgba(138, 143, 153, 0.4);
+  --mpg-tag-silver-fg: #ccced2;
+  --mpg-tag-silver-line: rgba(204, 206, 210, 0.7);
+  --mpg-tag-bronze-bg: rgba(160, 90, 38, 0.45);
+  --mpg-tag-bronze-surface: rgba(160, 90, 38, 0.22);
+  --mpg-tag-bronze-edge: rgba(160, 90, 38, 0.4);
+  --mpg-tag-bronze-fg: #d0ac92;
+  --mpg-tag-bronze-line: rgba(208, 172, 146, 0.7);
+  --mpg-tag-danger-bg: rgba(212, 51, 45, 0.45);
+  --mpg-tag-danger-surface: rgba(212, 51, 45, 0.22);
+  --mpg-tag-danger-edge: rgba(212, 51, 45, 0.4);
+  --mpg-tag-danger-fg: #eb9f9c;
+  --mpg-tag-danger-line: rgba(235, 159, 156, 0.7);
+  --mpg-tag-violet-bg: rgba(123, 63, 181, 0.45);
+  --mpg-tag-violet-surface: rgba(123, 63, 181, 0.22);
+  --mpg-tag-violet-edge: rgba(123, 63, 181, 0.4);
+  --mpg-tag-violet-fg: #bea1db;
+  --mpg-tag-violet-line: rgba(190, 161, 219, 0.7);
+  --mpg-tag-pink-bg: rgba(214, 31, 122, 0.45);
+  --mpg-tag-pink-surface: rgba(214, 31, 122, 0.22);
+  --mpg-tag-pink-edge: rgba(214, 31, 122, 0.4);
+  --mpg-tag-pink-fg: #ec96c0;
+  --mpg-tag-pink-line: rgba(236, 150, 192, 0.7);
+  --mpg-tag-brown-bg: rgba(138, 106, 69, 0.45);
+  --mpg-tag-brown-surface: rgba(138, 106, 69, 0.22);
+  --mpg-tag-brown-edge: rgba(138, 106, 69, 0.4);
+  --mpg-tag-brown-fg: #c6b6a4;
+  --mpg-tag-brown-line: rgba(198, 182, 164, 0.7);
+  --mpg-tag-teal-bg: rgba(13, 132, 148, 0.45);
+  --mpg-tag-teal-surface: rgba(13, 132, 148, 0.22);
+  --mpg-tag-teal-edge: rgba(13, 132, 148, 0.4);
+  --mpg-tag-teal-fg: #90c6ce;
+  --mpg-tag-teal-line: rgba(144, 198, 206, 0.7);
+  --mpg-tag-indigo-bg: rgba(57, 73, 171, 0.45);
+  --mpg-tag-indigo-surface: rgba(57, 73, 171, 0.22);
+  --mpg-tag-indigo-edge: rgba(57, 73, 171, 0.4);
+  --mpg-tag-indigo-fg: #9ca4d5;
+  --mpg-tag-indigo-line: rgba(156, 164, 213, 0.7);
+  --mpg-tag-faded-bg: rgba(107, 130, 153, 0.45);
+  --mpg-tag-faded-surface: rgba(107, 130, 153, 0.22);
+  --mpg-tag-faded-edge: rgba(107, 130, 153, 0.4);
+  --mpg-tag-faded-fg: #bbc6d0;
+  --mpg-tag-faded-line: rgba(187, 198, 208, 0.7);
+  --mpg-tag-neutral-bg: rgba(107, 114, 128, 0.45);
+  --mpg-tag-neutral-surface: rgba(107, 114, 128, 0.22);
+  --mpg-tag-neutral-edge: rgba(107, 114, 128, 0.4);
+  --mpg-tag-neutral-fg: #b8bbc2;
+  --mpg-tag-neutral-line: rgba(184, 187, 194, 0.7);
+}
+
+/* ============================================================
+   COMPOSANTS
+   CSS simple, sans Tailwind ni preprocesseur. Chaque classe ne
+   consomme que les jetons ci-dessus : aucune couleur en dur.
+   ============================================================ */
+
+/* --- Bandeau superieur --- */
+.mpg-banner { background-image: var(--mpg-banner); }
+
+.mpg-banner-item {
+  color: var(--mpg-on-banner-soft);
+  transition: background-color 150ms ease, color 150ms ease;
+}
+.mpg-banner-item:hover,
+.mpg-banner-item:focus-visible {
+  background-color: var(--mpg-banner-layer-hover);
+  color: var(--mpg-on-banner);
+}
+.mpg-banner-item:focus-visible {
+  outline: 2px solid var(--mpg-banner-focus-ring);
+  outline-offset: 2px;
+}
+.mpg-banner-item.is-active,
+.mpg-banner-item.is-active:hover {
+  background-color: var(--mpg-banner-layer-active);
+  color: var(--mpg-on-banner);
+  font-weight: 600;
+  box-shadow: inset 0 -2px 0 0 var(--mpg-banner-focus-ring);
+}
+.mpg-banner-chip {
+  color: var(--mpg-on-banner);
+  background-color: var(--mpg-banner-layer-chip);
+  border-radius: var(--mpg-radius);
+  transition: background-color 150ms ease;
+}
+
+/* --- Etiquettes de bonus --- */
+.mpg-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: var(--mpg-radius-sm);
+  border: 0.5px solid transparent;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.mpg-tag-steel { background-color: var(--mpg-tag-steel-bg); color: var(--mpg-tag-steel-fg); border-color: var(--mpg-tag-steel-line); }
+.mpg-tag-success { background-color: var(--mpg-tag-success-bg); color: var(--mpg-tag-success-fg); border-color: var(--mpg-tag-success-line); }
+.mpg-tag-fire { background-color: var(--mpg-tag-fire-bg); color: var(--mpg-tag-fire-fg); border-color: var(--mpg-tag-fire-line); }
+.mpg-tag-grass { background-color: var(--mpg-tag-grass-bg); color: var(--mpg-tag-grass-fg); border-color: var(--mpg-tag-grass-line); }
+.mpg-tag-amber { background-color: var(--mpg-tag-amber-bg); color: var(--mpg-tag-amber-fg); border-color: var(--mpg-tag-amber-line); }
+.mpg-tag-gold { background-color: var(--mpg-tag-gold-bg); color: var(--mpg-tag-gold-fg); border-color: var(--mpg-tag-gold-line); }
+.mpg-tag-silver { background-color: var(--mpg-tag-silver-bg); color: var(--mpg-tag-silver-fg); border-color: var(--mpg-tag-silver-line); }
+.mpg-tag-bronze { background-color: var(--mpg-tag-bronze-bg); color: var(--mpg-tag-bronze-fg); border-color: var(--mpg-tag-bronze-line); }
+.mpg-tag-danger { background-color: var(--mpg-tag-danger-bg); color: var(--mpg-tag-danger-fg); border-color: var(--mpg-tag-danger-line); }
+.mpg-tag-violet { background-color: var(--mpg-tag-violet-bg); color: var(--mpg-tag-violet-fg); border-color: var(--mpg-tag-violet-line); }
+.mpg-tag-pink { background-color: var(--mpg-tag-pink-bg); color: var(--mpg-tag-pink-fg); border-color: var(--mpg-tag-pink-line); }
+.mpg-tag-brown { background-color: var(--mpg-tag-brown-bg); color: var(--mpg-tag-brown-fg); border-color: var(--mpg-tag-brown-line); }
+.mpg-tag-teal { background-color: var(--mpg-tag-teal-bg); color: var(--mpg-tag-teal-fg); border-color: var(--mpg-tag-teal-line); }
+.mpg-tag-indigo { background-color: var(--mpg-tag-indigo-bg); color: var(--mpg-tag-indigo-fg); border-color: var(--mpg-tag-indigo-line); }
+.mpg-tag-faded { background-color: var(--mpg-tag-faded-bg); color: var(--mpg-tag-faded-fg); border-color: var(--mpg-tag-faded-line); }
+.mpg-tag-neutral { background-color: var(--mpg-tag-neutral-bg); color: var(--mpg-tag-neutral-fg); border-color: var(--mpg-tag-neutral-line); }
+
+/* --- Cartes de trophee --- */
+.mpg-trophy-card {
+  border-width: 0.5px;
+  border-style: solid;
+  border-radius: var(--mpg-radius);
+  color: var(--mpg-card-fg);
+}
+.mpg-trophy-card .mpg-muted { color: color-mix(in oklab, var(--mpg-card-fg) 74%, transparent); }
+.mpg-card-steel { --mpg-card-fg: var(--mpg-tag-steel-fg); background-color: var(--mpg-tag-steel-surface); border-color: var(--mpg-tag-steel-edge); }
+.mpg-card-success { --mpg-card-fg: var(--mpg-tag-success-fg); background-color: var(--mpg-tag-success-surface); border-color: var(--mpg-tag-success-edge); }
+.mpg-card-fire { --mpg-card-fg: var(--mpg-tag-fire-fg); background-color: var(--mpg-tag-fire-surface); border-color: var(--mpg-tag-fire-edge); }
+.mpg-card-grass { --mpg-card-fg: var(--mpg-tag-grass-fg); background-color: var(--mpg-tag-grass-surface); border-color: var(--mpg-tag-grass-edge); }
+.mpg-card-amber { --mpg-card-fg: var(--mpg-tag-amber-fg); background-color: var(--mpg-tag-amber-surface); border-color: var(--mpg-tag-amber-edge); }
+.mpg-card-gold { --mpg-card-fg: var(--mpg-tag-gold-fg); background-color: var(--mpg-tag-gold-surface); border-color: var(--mpg-tag-gold-edge); }
+.mpg-card-silver { --mpg-card-fg: var(--mpg-tag-silver-fg); background-color: var(--mpg-tag-silver-surface); border-color: var(--mpg-tag-silver-edge); }
+.mpg-card-bronze { --mpg-card-fg: var(--mpg-tag-bronze-fg); background-color: var(--mpg-tag-bronze-surface); border-color: var(--mpg-tag-bronze-edge); }
+.mpg-card-danger { --mpg-card-fg: var(--mpg-tag-danger-fg); background-color: var(--mpg-tag-danger-surface); border-color: var(--mpg-tag-danger-edge); }
+.mpg-card-violet { --mpg-card-fg: var(--mpg-tag-violet-fg); background-color: var(--mpg-tag-violet-surface); border-color: var(--mpg-tag-violet-edge); }
+.mpg-card-pink { --mpg-card-fg: var(--mpg-tag-pink-fg); background-color: var(--mpg-tag-pink-surface); border-color: var(--mpg-tag-pink-edge); }
+.mpg-card-brown { --mpg-card-fg: var(--mpg-tag-brown-fg); background-color: var(--mpg-tag-brown-surface); border-color: var(--mpg-tag-brown-edge); }
+.mpg-card-teal { --mpg-card-fg: var(--mpg-tag-teal-fg); background-color: var(--mpg-tag-teal-surface); border-color: var(--mpg-tag-teal-edge); }
+.mpg-card-indigo { --mpg-card-fg: var(--mpg-tag-indigo-fg); background-color: var(--mpg-tag-indigo-surface); border-color: var(--mpg-tag-indigo-edge); }
+.mpg-card-faded { --mpg-card-fg: var(--mpg-tag-faded-fg); background-color: var(--mpg-tag-faded-surface); border-color: var(--mpg-tag-faded-edge); }
+.mpg-card-neutral { --mpg-card-fg: var(--mpg-tag-neutral-fg); background-color: var(--mpg-tag-neutral-surface); border-color: var(--mpg-tag-neutral-edge); }
+
+/* --- Tableaux de classement --- */
+.mpg-table { width: 100%; border-collapse: collapse; }
+.mpg-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  font-weight: 600;
+  background-color: var(--mpg-head-neutral-bg);
+  color: var(--mpg-head-neutral-fg);
+}
+.mpg-table.mpg-head-l1 thead th { background-color: var(--mpg-head-l1-bg); color: var(--mpg-head-l1-fg); }
+.mpg-table.mpg-head-pl thead th { background-color: var(--mpg-head-pl-bg); color: var(--mpg-head-pl-fg); }
+.mpg-table.mpg-head-liga thead th { background-color: var(--mpg-head-liga-bg); color: var(--mpg-head-liga-fg); }
+.mpg-table.mpg-head-seriea thead th { background-color: var(--mpg-head-seriea-bg); color: var(--mpg-head-seriea-fg); }
+.mpg-table.mpg-head-l2 thead th { background-color: var(--mpg-head-l2-bg); color: var(--mpg-head-l2-fg); }
+.mpg-table.mpg-head-ldc thead th { background-color: var(--mpg-head-ldc-bg); color: var(--mpg-head-ldc-fg); }
+.mpg-table.mpg-head-super thead th { background-color: var(--mpg-head-super-bg); color: var(--mpg-head-super-fg); }
+.mpg-table.mpg-head-neutral thead th { background-color: var(--mpg-head-neutral-bg); color: var(--mpg-head-neutral-fg); }
+
+.mpg-table tbody tr:nth-child(even) { background-color: var(--mpg-border-soft); }
+.mpg-row-selected { background-color: var(--mpg-row-selected); }
+
+/* --- Impression --- */
+@media print {
+  @page { size: A4 landscape; margin: 10mm; }
+  .mpg-no-print { display: none !important; }
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; }
+  body { background-color: #ffffff; }
+}
+
+/* --- Multi Boss : a completer ---
+   Trois intensites d'ambre marquant un titre detenu dans 3, 4 ou 5
+   championnats. Ajoutes au site apres l'archive ayant servi a cette
+   extraction : recopier les valeurs reelles depuis le code courant
+   plutot que d'en inventer.
+
+   --mpg-multiboss-3-bg / -fg
+   --mpg-multiboss-4-bg / -fg
+   --mpg-multiboss-5-bg / -fg
+*/

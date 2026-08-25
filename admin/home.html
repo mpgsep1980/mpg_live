@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MPG — Managers</title>
+<link rel="stylesheet" href="/mpg-tokens.css">
+<link rel="stylesheet" href="/theme.css">
+<style>
+  .wrap { max-width: 640px; margin: 0 auto; padding: 28px 16px 60px; }
+
+  #search {
+    width: 100%; margin-bottom: 20px;
+  }
+
+  .manager-list { display: flex; flex-direction: column; gap: 8px; }
+  .manager-row {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    padding: 10px 14px; text-decoration: none; color: var(--text);
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .manager-row:hover { border-color: var(--accent-green); background: var(--card-alt); }
+  .avatar {
+    flex: none; width: 40px; height: 40px; border-radius: 50%;
+    background: var(--selected-bg); object-fit: cover;
+  }
+  .manager-name { font-weight: 700; font-size: 0.98em; color: var(--text-navy); }
+  .chevron { margin-left: auto; color: var(--label); }
+
+  .status-msg { display: block; text-align: center; color: var(--muted); font-size: 0.9em; margin-top: 20px; }
+</style>
+</head>
+<body>
+<div class="app-header">
+  <a class="app-title" href="/">MPG</a>
+  <nav>
+    <a href="/" class="active">Managers</a>
+    <a href="/poules">Poules</a>
+    <a href="/classement-ligue">Classement ligue</a>
+    <a href="/super-classement">Super classement</a>
+    <a href="/simulator">Simulateur</a>
+    <a href="/comptes">Comptes</a>
+    <a href="/config">Barèmes</a>
+    <a href="/token">Token API</a>
+  </nav>
+</div>
+<div class="wrap">
+  <input id="search" type="text" placeholder="Rechercher un manager…">
+
+  <div id="list" class="manager-list"><span class="status-msg">Chargement…</span></div>
+</div>
+
+<script>
+// Nav reservee aux admins (retour utilisateur 2026-08-23 : "à garder pour
+// le ou les admins que je désigne") -- masque les 4 liens admin-only du nav
+// tant que la session n'est pas authentifiee comme un admin (cf.
+// core/auth.py::ADMIN_USER_IDS). Ne remplace PAS la protection reelle de
+// chaque page (gate propre a admin.html/comptes.html/simulator.html/
+// token.html) -- sert juste a ne pas les ANNONCER a un visiteur non-admin.
+(async function hideAdminNavIfNeeded() {
+  try {
+    const res = await fetch('/api/auth/status');
+    const status = await res.json();
+    if (!status.isAdmin) {
+      document.querySelectorAll(
+        '.app-header nav a[href="/simulator"], .app-header nav a[href="/comptes"], .app-header nav a[href="/config"], .app-header nav a[href="/token"]'
+      ).forEach(a => a.remove());
+    }
+  } catch (err) { /* pas bloquant -- nav complete par defaut si le check echoue */ }
+})();
+
+let managers = [];
+
+function rowHtml(m) {
+  const avatar = m.avatarUrl
+    ? `<img class="avatar" src="${m.avatarUrl}" alt="">`
+    : `<div class="avatar"></div>`;
+  return `<a class="manager-row" href="/manager?id=${encodeURIComponent(m.userId)}">
+    ${avatar}
+    <span class="manager-name">${m.realName}</span>
+    <span class="chevron">›</span>
+  </a>`;
+}
+
+function render(filter) {
+  const list = document.getElementById('list');
+  const term = (filter || '').trim().toLowerCase();
+  const filtered = term ? managers.filter(m => m.realName.toLowerCase().includes(term)) : managers;
+  list.innerHTML = filtered.length
+    ? filtered.map(rowHtml).join('')
+    : '<span class="status-msg">Aucun manager trouvé.</span>';
+}
+
+document.getElementById('search').addEventListener('input', (e) => render(e.target.value));
+
+async function charger() {
+  try {
+    const res = await fetch('/api/managers');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    managers = data.managers || [];
+    render('');
+  } catch (err) {
+    document.getElementById('list').innerHTML = `<span class="status-msg">Erreur : ${err.message}</span>`;
+  }
+}
+
+charger();
+</script>
+</body>
+</html>

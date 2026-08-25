@@ -1,0 +1,751 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MPG — Mode admin</title>
+<link rel="stylesheet" href="/mpg-tokens.css">
+<link rel="stylesheet" href="/theme.css">
+<style>
+  :root {
+    --green: var(--accent-green); --green-dark: var(--accent-green);
+    --danger: #d9534f;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 28px 16px 60px; }
+  h1 { color: var(--text-navy); font-size: 1.5em; margin-bottom: 4px; font-weight: 800; }
+  .subtitle { color: var(--muted); font-size: 0.9em; margin-bottom: 24px; }
+
+  .gate-card {
+    max-width: 380px; margin: 60px auto; background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 20px; text-align: center;
+  }
+  .gate-card input[type="text"], .gate-card input[type="password"] {
+    display: block; width: 100%; margin: 12px 0; background: var(--card-alt); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; padding: 8px 10px; font-size: 0.95em; font-family: inherit;
+  }
+  .gate-card button { width: 100%; background: var(--green-dark); color: #fff; border: none; border-radius: 8px; padding: 8px 18px; font-size: 0.9em; cursor: pointer; }
+  .gate-card button:hover { background: var(--green); }
+  .gate-card .status-msg { display: block; text-align: center; color: var(--muted); font-size: 0.85em; margin: 8px 0 0; }
+  .gate-card .status-msg.err { color: var(--danger); }
+
+  .league-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px 20px; margin-bottom: 18px;
+  }
+  .league-card h2 { margin: 0 0 12px; font-size: 1.1em; }
+  .league-card h2 .code { color: var(--muted); font-weight: 400; font-size: 0.75em; }
+
+  .row { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 14px; }
+  .field { display: flex; flex-direction: column; gap: 4px; min-width: 140px; }
+  .field label { font-size: 0.78em; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; }
+  .field input[type=number] {
+    background: var(--card-alt); border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; padding: 6px 8px; width: 100px;
+  }
+  .field.readonly input { opacity: 0.7; }
+
+  .tier-row { display: flex; gap: 8px; margin-bottom: 4px; }
+  .tier-row input[type=number] {
+    background: var(--card-alt); border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; padding: 6px 8px; width: 80px;
+  }
+  .tier-ranges { font-size: 0.78em; color: var(--muted); }
+
+  details { margin-bottom: 14px; }
+  summary { cursor: pointer; color: var(--muted); font-size: 0.85em; margin-bottom: 8px; }
+  .bonus-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px 12px; margin-top: 8px; }
+  .bonus-grid label { font-size: 0.85em; display: flex; align-items: center; gap: 6px; }
+
+  button.save {
+    background: var(--green-dark); color: #fff; border: none; border-radius: 8px;
+    padding: 8px 18px; font-size: 0.9em; cursor: pointer;
+  }
+  button.save:hover { background: var(--green); }
+  .status-msg { font-size: 0.85em; margin-left: 12px; color: var(--muted); }
+  .status-msg.ok { color: var(--green); }
+  .status-msg.err { color: var(--danger); }
+
+  .bonus-row { display: grid; grid-template-columns: minmax(140px,1fr) 2fr 90px 70px; gap: 10px; align-items: center; padding: 6px 0; border-top: 1px solid var(--border); }
+  .bonus-row:first-child { border-top: none; }
+  .bonus-row .name { font-weight: 600; }
+  .bonus-row .desc { color: var(--muted); font-size: 0.8em; }
+  .bonus-row input[type=number] { width: 70px; background: var(--card-alt); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 6px 8px; }
+
+  .enabled-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 12px; margin-bottom: 12px; }
+  .enabled-grid label { font-size: 0.85em; display: flex; align-items: center; gap: 6px; }
+
+  .podium-editor, .boss-editor, .multiboss-editor { margin-top: 6px; }
+  .podium-group, .boss-group, .multiboss-group {
+    background: var(--card-alt); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; margin-bottom: 10px;
+  }
+  .mini-group-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+  .mini-group-head label { font-size: 0.85em; color: var(--text); display: flex; align-items: center; gap: 6px; }
+  .mini-group-head input[type=number] {
+    background: var(--card); border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; padding: 4px 6px;
+  }
+  .mini-table { width: 100%; border-collapse: collapse; }
+  .mini-table th { text-align: left; font-size: 0.72em; color: var(--muted); text-transform: uppercase; padding: 2px 6px 4px; }
+  .mini-table td { padding: 3px 6px; }
+  .mini-table input[type=text], .mini-table input[type=number] {
+    background: var(--card); border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; padding: 5px 7px; width: 100%;
+  }
+  .mini-table td:last-child { width: 28px; }
+
+  button.mini-add {
+    background: none; border: 1px dashed var(--border); color: var(--muted);
+    border-radius: 6px; padding: 5px 10px; font-size: 0.8em; cursor: pointer; margin-top: 6px;
+  }
+  button.mini-add:hover { color: var(--green); border-color: var(--green); }
+  button.mini-remove-row {
+    background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1em; line-height: 1; padding: 4px;
+  }
+  button.mini-remove-row:hover { color: var(--danger); }
+  button.mini-remove-group {
+    background: none; border: none; color: var(--muted); cursor: pointer; font-size: 0.78em; text-decoration: underline;
+  }
+  button.mini-remove-group:hover { color: var(--danger); }
+</style>
+</head>
+<body>
+<div class="app-header">
+  <a class="app-title" href="/">Administration</a>
+  <nav>
+    <a href="/">Managers</a>
+    <a href="/poules">Poules</a>
+    <a href="/classement-ligue">Classement ligue</a>
+    <a href="/super-classement">Super classement</a>
+    <a href="/simulator">Simulateur</a>
+    <a href="/comptes">Comptes</a>
+    <a href="/config" class="active">Barèmes</a>
+    <a href="/token">Token API</a>
+  </nav>
+</div>
+<div class="wrap">
+  <div id="gate" class="gate-card">
+    <p>Réservé aux admins.</p>
+    <input type="text" id="gate-userid" placeholder="Identifiant admin" autocomplete="username">
+    <input type="password" id="gate-pw" placeholder="Mot de passe" autocomplete="current-password">
+    <button id="gate-login">Se connecter</button>
+    <div class="status-msg err" id="gate-msg"></div>
+  </div>
+
+  <div id="main-content" style="display:none;">
+  <h1>Mode admin — MPG League Manager</h1>
+  <div class="subtitle">Paramètres de calcul par ligue (nombre de divisions, pondérations, bonus suivis). Local uniquement.</div>
+
+  <div class="league-card">
+    <h2>Paramètres communs</h2>
+    <div class="subtitle" style="margin-bottom:14px">Nombre de joueurs, identique pour les 6 championnats — appliqué à toutes les ligues d'un coup.</div>
+    <div class="row">
+      <div class="field">
+        <label>Joueurs par ligue</label>
+        <input type="number" id="global-playersNumber" value="">
+      </div>
+    </div>
+    <button class="save" id="save-players-number">Enregistrer</button>
+    <span class="status-msg" id="players-number-status"></span>
+  </div>
+
+  <div class="league-card">
+    <h2>Bonus généraux <span class="code">inter-ligues, Super Classement</span></h2>
+    <div class="subtitle" style="margin-bottom:14px">Appliqués une fois sur le classement fusionné des 6 ligues. Décoche pour désactiver, ou change la valeur en points.</div>
+    <div id="general-bonuses"><p style="color:var(--muted)">Chargement…</p></div>
+
+    <div class="subtitle" style="margin:14px 0 6px">Ligues concernées — une ligue décochée n'est jamais gagnante ni candidate (ex. LDC exclue cette saison, incluse la précédente)</div>
+    <div id="general-bonuses-leagues"><p style="color:var(--muted)">Chargement…</p></div>
+
+    <button class="save" id="save-general-bonuses" style="margin-top:12px">Enregistrer</button>
+    <span class="status-msg" id="general-bonuses-status"></span>
+  </div>
+
+  <div class="league-card">
+    <h2>Multi Boss <span class="code">inter-ligues, à partir de 3 championnats gagnés</span></h2>
+    <div class="subtitle" style="margin-bottom:14px">Points au champion de division selon le barème de la ligue (nombre total de divisions cette saison-là) — distinct de Bonus_Champion (10 pts fixes, une seule ligue) et de Boss Saison (fidélité, une seule ligue).</div>
+    <div id="multi-boss-editor"><p style="color:var(--muted)">Chargement…</p></div>
+    <button class="save" id="save-multi-boss" style="margin-top:12px">Enregistrer</button>
+    <span class="status-msg" id="multi-boss-status"></span>
+  </div>
+
+  <div id="leagues"><p style="color:var(--muted)">Chargement…</p></div>
+  </div>
+</div>
+
+<script>
+// Nav reservee aux admins (retour utilisateur 2026-08-23 : "à garder pour
+// le ou les admins que je désigne") -- masque les 4 liens admin-only du nav
+// tant que la session n'est pas authentifiee comme un admin (redondant avec
+// le gate de CETTE page, mais coherent avec les autres pages du site).
+(async function hideAdminNavIfNeeded() {
+  try {
+    const res = await fetch('/api/auth/status');
+    const status = await res.json();
+    if (!status.isAdmin) {
+      document.querySelectorAll(
+        '.app-header nav a[href="/simulator"], .app-header nav a[href="/comptes"], .app-header nav a[href="/config"], .app-header nav a[href="/token"]'
+      ).forEach(a => a.remove());
+    }
+  } catch (err) { /* pas bloquant */ }
+})();
+
+let bonusCatalog = {};
+
+async function charger() {
+  const res = await fetch('/api/leagues');
+  const data = await res.json();
+  bonusCatalog = data.bonusCatalog;
+  const container = document.getElementById('leagues');
+  container.innerHTML = '';
+  data.leagues.forEach(l => container.appendChild(renderLeagueCard(l)));
+
+  if (data.leagues.length) {
+    document.getElementById('global-playersNumber').value = data.leagues[0].playersNumber ?? '';
+  }
+  document.getElementById('save-players-number').onclick = sauvegarderPlayersNumber;
+
+  await chargerBonusGeneraux();
+  await chargerMultiBoss();
+}
+
+async function sauvegarderPlayersNumber() {
+  const statusEl = document.getElementById('players-number-status');
+  const playersNumber = parseInt(document.getElementById('global-playersNumber').value, 10);
+
+  statusEl.textContent = 'Enregistrement…';
+  statusEl.className = 'status-msg';
+  try {
+    const res = await fetch('/api/players-number', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playersNumber }),
+    });
+    if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+    statusEl.textContent = '✓ Appliqué aux 6 ligues';
+    statusEl.className = 'status-msg ok';
+    setTimeout(charger, 600);
+  } catch (err) {
+    statusEl.textContent = `Erreur : ${err.message}`;
+    statusEl.className = 'status-msg err';
+  }
+}
+
+async function chargerBonusGeneraux() {
+  const res = await fetch('/api/general-bonuses');
+  const data = await res.json();
+  const container = document.getElementById('general-bonuses');
+  container.innerHTML = data.categories.map((cat, i) => `
+    <div class="bonus-row" data-index="${i}">
+      <label><input type="checkbox" class="gb-enabled" ${cat.enabled ? 'checked' : ''}> <span class="name">${cat.name}</span></label>
+      <span class="desc">${cat.direction === 'min' ? 'plus petit' : 'plus grand'} ${cat.key}${cat.require_positive ? ' (si > 0)' : ''}</span>
+      <input type="number" step="1" class="gb-points" value="${cat.points}">
+      <span class="desc">pts</span>
+    </div>`).join('');
+
+  const leaguesContainer = document.getElementById('general-bonuses-leagues');
+  leaguesContainer.innerHTML = `<div class="bonus-grid">${data.allLeagues.map(name => `
+    <label><input type="checkbox" class="gb-league" value="${name}" ${data.includedLeagues.includes(name) ? 'checked' : ''}> ${name.replace(/_/g, ' ')}</label>
+  `).join('')}</div>`;
+
+  document.getElementById('save-general-bonuses').onclick = () => sauvegarderBonusGeneraux(data.categories);
+}
+
+async function sauvegarderBonusGeneraux(originalCategories) {
+  const statusEl = document.getElementById('general-bonuses-status');
+  const categories = Array.from(document.querySelectorAll('#general-bonuses .bonus-row')).map((row, i) => ({
+    ...originalCategories[i],
+    enabled: row.querySelector('.gb-enabled').checked,
+    points: parseFloat(row.querySelector('.gb-points').value),
+  }));
+  const includedLeagues = Array.from(document.querySelectorAll('.gb-league:checked')).map(cb => cb.value);
+
+  statusEl.textContent = 'Enregistrement…';
+  statusEl.className = 'status-msg';
+  try {
+    const res = await fetch('/api/general-bonuses', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ categories, includedLeagues }),
+    });
+    if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+    statusEl.textContent = '✓ Enregistré';
+    statusEl.className = 'status-msg ok';
+  } catch (err) {
+    statusEl.textContent = `Erreur : ${err.message}`;
+    statusEl.className = 'status-msg err';
+  }
+}
+
+function multiBossRuleRowHtml(division, points) {
+  return `
+    <tr>
+      <td><input type="number" class="mb-division" value="${division}" style="width:70px"></td>
+      <td><input type="number" step="0.5" class="mb-points" value="${points}"></td>
+      <td><button type="button" class="mini-remove-row mb-remove-rule" title="Supprimer">×</button></td>
+    </tr>`;
+}
+
+function multiBossGroupHtml(totalDivisions, poulesPoints, rows) {
+  return `
+    <div class="multiboss-group">
+      <div class="mini-group-head">
+        <label>Ligue à <input type="number" class="mb-total-divisions" value="${totalDivisions}" style="width:56px"> divisions</label>
+        <button type="button" class="mini-remove-group mb-remove-group">Supprimer</button>
+      </div>
+      <div class="field" style="margin-bottom:8px">
+        <label>Points poules (titre remporté avant la répartition en divisions)</label>
+        <input type="number" step="0.5" class="mb-poules" value="${poulesPoints}">
+      </div>
+      <table class="mini-table">
+        <thead><tr><th>Division remportée</th><th>Points</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <button type="button" class="mini-add mb-add-rule">+ Division</button>
+    </div>`;
+}
+
+function renderMultiBossEditor(tables) {
+  const totals = Object.keys(tables).map(Number).sort((a, b) => a - b);
+  const groups = totals.map(total => {
+    const t = tables[total];
+    const divisions = Object.keys(t).filter(k => k !== 'poules').map(Number).sort((a, b) => a - b);
+    const rows = divisions.map(div => multiBossRuleRowHtml(div, t[div])).join('');
+    return multiBossGroupHtml(total, t.poules ?? 0, rows);
+  }).join('');
+  return `<div class="multiboss-editor">${groups}<button type="button" class="mini-add mb-add-group">+ Taille de ligue (nb de divisions)</button></div>`;
+}
+
+function readMultiBossTables() {
+  const result = {};
+  document.querySelectorAll('#multi-boss-editor .multiboss-group').forEach(group => {
+    const total = group.querySelector('.mb-total-divisions').value.trim();
+    if (!total) return;
+    const poules = parseFloat(group.querySelector('.mb-poules').value);
+    const table = {};
+    if (!isNaN(poules)) table['poules'] = poules;
+    group.querySelectorAll('tbody tr').forEach(tr => {
+      const div = tr.querySelector('.mb-division').value.trim();
+      const pts = parseFloat(tr.querySelector('.mb-points').value);
+      if (div && !isNaN(pts)) table[div] = pts;
+    });
+    if (Object.keys(table).length) result[total] = table;
+  });
+  return result;
+}
+
+async function chargerMultiBoss() {
+  const res = await fetch('/api/multi-boss');
+  const data = await res.json();
+  const editor = document.getElementById('multi-boss-editor');
+  editor.innerHTML = renderMultiBossEditor(data.tables);
+  editor.addEventListener('click', handleMiniEditorClick);
+  document.getElementById('save-multi-boss').onclick = sauvegarderMultiBoss;
+}
+
+async function sauvegarderMultiBoss() {
+  const statusEl = document.getElementById('multi-boss-status');
+  const tables = readMultiBossTables();
+
+  statusEl.textContent = 'Enregistrement…';
+  statusEl.className = 'status-msg';
+  try {
+    const res = await fetch('/api/multi-boss', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tables }),
+    });
+    if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+    statusEl.textContent = '✓ Enregistré';
+    statusEl.className = 'status-msg ok';
+  } catch (err) {
+    statusEl.textContent = `Erreur : ${err.message}`;
+    statusEl.className = 'status-msg err';
+  }
+}
+
+const INTERNAL_BONUS_TOGGLES = [
+  ["pichichi", "Pichichi (meilleure attaque)"],
+  ["mur", "Le Mur (meilleure défense)"],
+  ["champion", "Bonus Champion"],
+  ["second", "Bonus Second"],
+  ["dernier", "Bonus Dernier"],
+  ["podium", "Bonus Podium"],
+  ["bossSaison", "Boss Saison"],
+];
+
+function renderInternalBonusFields(ib, playersPerDivision, playersNumber) {
+  // Double aller-retour : N joueurs/division -> 2*(N-1) journees. Sert a ne montrer
+  // que la longueur de saison pertinente dans l'editeur Podium (gagner de la place).
+  const relevantSeasonLength = playersPerDivision ? 2 * (playersPerDivision - 1) : null;
+  const toggles = INTERNAL_BONUS_TOGGLES.map(([key, label]) => `
+    <label><input type="checkbox" class="ib-enabled" data-key="${key}" ${ib.enabled[key] ? 'checked' : ''}> ${label}</label>
+  `).join('');
+
+  return `
+    <div class="enabled-grid">${toggles}</div>
+    <div class="row">
+      <div class="field"><label>Pichichi (max pts, fin saison)</label>
+        <input type="number" step="1" class="ib-pichichiMaxPoints" value="${ib.pichichiMaxPoints}"></div>
+      <div class="field"><label>Le Mur (max pts, fin saison)</label>
+        <input type="number" step="1" class="ib-murMaxPoints" value="${ib.murMaxPoints}"></div>
+      <div class="field"><label>Champion (max pts, fin saison)</label>
+        <input type="number" step="1" class="ib-championMaxPoints" value="${ib.championMaxPoints}"></div>
+    </div>
+    <div class="subtitle" style="margin:-6px 0 12px">Second/Dernier : compteurs fixes (1 par saison), pas des points — ils remontent dans le Super Classement où "Poulidor"/"La Chèvre" (section Bonus généraux) attribuent les vrais points. Les rendre réglables par ligue fausserait la comparaison inter-ligues.</div>
+    <div class="field" style="min-width:100%">
+      <label>Bonus Podium — points de fin de division selon le rang, par longueur de saison</label>
+      ${renderPodiumEditor(ib.podiumRules, relevantSeasonLength)}
+    </div>
+    <div class="field" style="min-width:100%">
+      <label>Boss Saison — points au champion de division, selon l'ancienneté et la taille de ligue</label>
+      ${renderBossSaisonEditor(ib.bossSaisonTables, playersNumber)}
+    </div>
+  `;
+}
+
+function podiumGroupHtml(length, rows) {
+  return `
+    <div class="podium-group">
+      <div class="mini-group-head">
+        <label>Saison de <input type="number" class="pg-length" value="${length}" style="width:56px"> journées</label>
+        <button type="button" class="mini-remove-group pr-remove-group">Supprimer</button>
+      </div>
+      <table class="mini-table">
+        <thead><tr><th>Rangs (ex. 1,2,3)</th><th>Points</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <button type="button" class="mini-add pr-add-rule">+ Règle</button>
+    </div>`;
+}
+
+function podiumRuleRowHtml(ranks, points) {
+  return `
+    <tr>
+      <td><input type="text" class="pr-ranks" value="${ranks}" placeholder="1,2,3"></td>
+      <td><input type="number" step="0.5" class="pr-points" value="${points}"></td>
+      <td><button type="button" class="mini-remove-row pr-remove-rule" title="Supprimer">×</button></td>
+    </tr>`;
+}
+
+function renderPodiumEditor(podiumRules, relevantLength) {
+  const lengths = Object.keys(podiumRules).map(Number).sort((a, b) => a - b);
+  const relevant = lengths.filter(l => l === relevantLength);
+  const shown = relevant.length ? relevant : lengths; // repli : rien ne correspond -> tout montrer
+  const hidden = relevant.length ? lengths.filter(l => l !== relevantLength) : [];
+
+  const groupsHtml = list => list.map(length => {
+    const rows = podiumRules[length].map(r => podiumRuleRowHtml(r.ranks.join(','), r.points)).join('');
+    return podiumGroupHtml(length, rows);
+  }).join('');
+
+  const hiddenBlock = hidden.length
+    ? `<details><summary>${hidden.length} autre(s) longueur(s) de saison (non pertinente(s) pour ${relevantLength} journées)</summary>${groupsHtml(hidden)}</details>`
+    : '';
+
+  return `<div class="podium-editor">${groupsHtml(shown)}${hiddenBlock}<button type="button" class="mini-add pr-add-group">+ Longueur de saison</button></div>`;
+}
+
+function bossGroupHtml(size, start, subsequent) {
+  return `
+    <div class="boss-group">
+      <div class="mini-group-head">
+        <label>Ligue de <input type="number" class="bg-size" value="${size}" style="width:70px"> joueurs</label>
+        <button type="button" class="mini-remove-group bt-remove-group">Supprimer</button>
+      </div>
+      <div class="row" style="margin-bottom:0">
+        <div class="field">
+          <label>Points saison de départ (1ʳᵉ fois champion)</label>
+          <input type="number" step="0.5" class="bg-start" value="${start}">
+        </div>
+        <div class="field">
+          <label>Points 2ᵉ / 3ᵉ saison de suite champion (même valeur quelle que soit la division)</label>
+          <input type="number" step="0.5" class="bg-subsequent" value="${subsequent}">
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderBossSaisonEditor(bossSaisonTables, relevantSize) {
+  const sizes = Object.keys(bossSaisonTables).map(Number).sort((a, b) => a - b);
+  const relevant = sizes.filter(s => s === relevantSize);
+  const shown = relevant.length ? relevant : sizes; // repli : rien ne correspond -> tout montrer
+  const hidden = relevant.length ? sizes.filter(s => s !== relevantSize) : [];
+
+  const groupsHtml = list => list.map(size => {
+    const t = bossSaisonTables[size];
+    return bossGroupHtml(size, t.start, t.subsequent);
+  }).join('');
+
+  const hiddenBlock = hidden.length
+    ? `<details><summary>${hidden.length} autre(s) taille(s) de ligue (non pertinente(s) pour ${relevantSize} joueurs)</summary>${groupsHtml(hidden)}</details>`
+    : '';
+
+  return `<div class="boss-editor">${groupsHtml(shown)}${hiddenBlock}<button type="button" class="mini-add bt-add-group">+ Taille de ligue</button></div>`;
+}
+
+function tierRangesLabel(totalDivisions, nTiers) {
+  if (!totalDivisions) return '';
+  const tierSize = Math.max(1, Math.floor(totalDivisions / nTiers));
+  const ranges = [];
+  for (let i = 0; i < nTiers; i++) {
+    const start = i * tierSize + 1;
+    const end = i === nTiers - 1 ? totalDivisions : (i + 1) * tierSize;
+    ranges.push(start === end ? `div. ${start}` : `div. ${start}-${end}`);
+  }
+  return ranges.join(' / ');
+}
+
+function renderLeagueCard(league) {
+  const card = document.createElement('div');
+  card.className = 'league-card';
+  card.dataset.code = league.code;
+
+  const tiers = league.scoring.coeffTiers;
+  const tierInputs = tiers.map((coeff, i) => `
+    <input type="number" step="0.05" class="tier-coeff" data-tier="${i}" value="${coeff}">`).join('');
+
+  const bonusChecks = Object.entries(bonusCatalog).map(([key, label]) => `
+    <label>
+      <input type="checkbox" class="bonus-check" value="${key}"
+        ${league.scoring.trackedBonuses.includes(key) ? 'checked' : ''}>
+      ${label}
+    </label>`).join('');
+
+  card.innerHTML = `
+    <h2>${league.nom.replace(/_/g, ' ')} <span class="code">${league.code}</span></h2>
+    <div class="row">
+      <div class="field readonly">
+        <label>Joueurs (commun, cf. Paramètres communs)</label>
+        <input type="number" value="${league.playersNumber ?? ''}" disabled>
+      </div>
+      <div class="field">
+        <label>Joueurs / division</label>
+        <input type="number" class="f-playersPerDivision" value="${league.scoring.playersPerDivision}" data-players="${league.playersNumber ?? 0}">
+      </div>
+      <div class="field readonly">
+        <label>Divisions (calculé)</label>
+        <input type="number" class="f-numberOfDivisions" value="${league.numberOfDivisions}" disabled>
+      </div>
+      <div class="field">
+        <label>Fin de poules (journée)</label>
+        <input type="number" class="f-poolGameweeks" value="${league.poolGameweeks ?? ''}">
+      </div>
+      <div class="field">
+        <label>Fin Division A (journée)</label>
+        <input type="number" class="f-Div_A_Gameweeks" value="${league.Div_A_Gameweeks ?? ''}">
+      </div>
+      <div class="field">
+        <label>Saison de départ</label>
+        <input type="number" class="f-seasonStart" value="${league.seasonStart ?? ''}">
+      </div>
+      <div class="field">
+        <label>Saison en cours</label>
+        <input type="number" class="f-seasonSearch" value="${league.seasonSearch ?? ''}">
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label>Coeff. phase de poules</label>
+        <input type="number" step="0.05" class="f-poolCoeff" value="${league.scoring.poolCoeff}">
+      </div>
+      <div class="field">
+        <label>Coeff. par défaut</label>
+        <input type="number" step="0.05" class="f-defaultCoeff" value="${league.scoring.defaultCoeff}">
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Coeff. par tiers de divisions (haut / milieu / bas)</label>
+      <div class="tier-row">${tierInputs}</div>
+      <span class="tier-ranges">${tierRangesLabel(league.numberOfDivisions, tiers.length)}</span>
+    </div>
+
+    <details>
+      <summary>Bonus/badges suivis (${league.scoring.trackedBonuses.length}/${Object.keys(bonusCatalog).length}) — informatifs, n'affectent pas les points</summary>
+      <div class="bonus-grid">${bonusChecks}</div>
+    </details>
+
+    <details>
+      <summary>Bonus internes de division — Pichichi, Le Mur, Champion, Podium, Boss Saison (affectent les points)</summary>
+      ${renderInternalBonusFields(league.scoring.internalBonuses, league.scoring.playersPerDivision, league.playersNumber)}
+    </details>
+
+    <button class="save">Enregistrer</button>
+    <span class="status-msg"></span>
+  `;
+
+  card.querySelector('.save').addEventListener('click', () => sauvegarder(card));
+  card.addEventListener('click', handleMiniEditorClick);
+
+  const playersPerDivisionInput = card.querySelector('.f-playersPerDivision');
+  const numberOfDivisionsInput = card.querySelector('.f-numberOfDivisions');
+  const tierRangesEl = card.querySelector('.tier-ranges');
+  playersPerDivisionInput.addEventListener('input', () => {
+    const players = parseInt(playersPerDivisionInput.dataset.players, 10) || 0;
+    const perDivision = parseInt(playersPerDivisionInput.value, 10) || 0;
+    const total = perDivision > 0 ? Math.floor(players / perDivision) : 0;
+    numberOfDivisionsInput.value = total;
+    tierRangesEl.textContent = tierRangesLabel(total, tiers.length);
+  });
+
+  return card;
+}
+
+function handleMiniEditorClick(e) {
+  const t = e.target;
+
+  if (t.matches('.pr-add-rule')) {
+    t.previousElementSibling.querySelector('tbody').insertAdjacentHTML('beforeend', podiumRuleRowHtml('', 0));
+  } else if (t.matches('.pr-remove-rule')) {
+    t.closest('tr').remove();
+  } else if (t.matches('.pr-remove-group')) {
+    t.closest('.podium-group').remove();
+  } else if (t.matches('.pr-add-group')) {
+    t.insertAdjacentHTML('beforebegin', podiumGroupHtml('', ''));
+  } else if (t.matches('.bt-remove-group')) {
+    t.closest('.boss-group').remove();
+  } else if (t.matches('.bt-add-group')) {
+    t.insertAdjacentHTML('beforebegin', bossGroupHtml('', 0, 10));
+  } else if (t.matches('.mb-add-rule')) {
+    t.previousElementSibling.querySelector('tbody').insertAdjacentHTML('beforeend', multiBossRuleRowHtml('', 0));
+  } else if (t.matches('.mb-remove-rule')) {
+    t.closest('tr').remove();
+  } else if (t.matches('.mb-remove-group')) {
+    t.closest('.multiboss-group').remove();
+  } else if (t.matches('.mb-add-group')) {
+    t.insertAdjacentHTML('beforebegin', multiBossGroupHtml('', 0, ''));
+  }
+}
+
+function readPodiumRules(card) {
+  const result = {};
+  card.querySelectorAll('.podium-group').forEach(group => {
+    const length = group.querySelector('.pg-length').value.trim();
+    if (!length) return;
+    const rules = Array.from(group.querySelectorAll('tbody tr')).map(tr => ({
+      ranks: tr.querySelector('.pr-ranks').value.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n)),
+      points: parseFloat(tr.querySelector('.pr-points').value),
+    })).filter(r => r.ranks.length && !isNaN(r.points));
+    if (rules.length) result[length] = rules;
+  });
+  return result;
+}
+
+function readBossSaisonTables(card) {
+  const result = {};
+  card.querySelectorAll('.boss-group').forEach(group => {
+    const size = group.querySelector('.bg-size').value.trim();
+    if (!size) return;
+    const start = parseFloat(group.querySelector('.bg-start').value);
+    const subsequent = parseFloat(group.querySelector('.bg-subsequent').value);
+    if (!isNaN(start) && !isNaN(subsequent)) result[size] = { start, subsequent };
+  });
+  return result;
+}
+
+async function sauvegarder(card) {
+  const code = card.dataset.code;
+  const statusEl = card.querySelector('.status-msg');
+
+  const coeffTiers = Array.from(card.querySelectorAll('.tier-coeff'))
+    .sort((a, b) => a.dataset.tier - b.dataset.tier)
+    .map(input => parseFloat(input.value));
+
+  const trackedBonuses = Array.from(card.querySelectorAll('.bonus-check:checked')).map(cb => cb.value);
+
+  const ibEnabled = {};
+  card.querySelectorAll('.ib-enabled').forEach(cb => { ibEnabled[cb.dataset.key] = cb.checked; });
+
+  const podiumRules = readPodiumRules(card);
+  const bossSaisonTables = readBossSaisonTables(card);
+
+  const payload = {
+    poolGameweeks: parseInt(card.querySelector('.f-poolGameweeks').value, 10),
+    Div_A_Gameweeks: parseInt(card.querySelector('.f-Div_A_Gameweeks').value, 10),
+    seasonStart: parseInt(card.querySelector('.f-seasonStart').value, 10),
+    seasonSearch: parseInt(card.querySelector('.f-seasonSearch').value, 10),
+    scoring: {
+      playersPerDivision: parseInt(card.querySelector('.f-playersPerDivision').value, 10),
+      poolCoeff: parseFloat(card.querySelector('.f-poolCoeff').value),
+      defaultCoeff: parseFloat(card.querySelector('.f-defaultCoeff').value),
+      coeffTiers,
+      trackedBonuses,
+      internalBonuses: {
+        enabled: ibEnabled,
+        pichichiMaxPoints: parseFloat(card.querySelector('.ib-pichichiMaxPoints').value),
+        murMaxPoints: parseFloat(card.querySelector('.ib-murMaxPoints').value),
+        championMaxPoints: parseFloat(card.querySelector('.ib-championMaxPoints').value),
+        secondPoints: 1,
+        dernierPoints: 1,
+        podiumRules,
+        bossSaisonTables,
+      },
+    },
+  };
+
+  statusEl.textContent = 'Enregistrement…';
+  statusEl.className = 'status-msg';
+  try {
+    const res = await fetch(`/api/leagues/${code}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+    statusEl.textContent = '✓ Enregistré';
+    statusEl.className = 'status-msg ok';
+    setTimeout(charger, 600);
+  } catch (err) {
+    statusEl.textContent = `Erreur : ${err.message}`;
+    statusEl.className = 'status-msg err';
+  }
+}
+
+// Page reservee aux admins (retour utilisateur 2026-08-23 : "à garder pour
+// le ou les admins que je désigne") -- meme patron de gate que comptes.html/
+// simulator.html (login normal, puis /api/auth/status confirme isAdmin
+// avant de reveler le contenu -- un manager non-admin peut avoir un mot de
+// passe VALIDE mais ne doit pas voir cette page pour autant).
+async function attemptGateLogin() {
+  const userId = document.getElementById('gate-userid').value.trim();
+  const password = document.getElementById('gate-pw').value;
+  const msgEl = document.getElementById('gate-msg');
+  msgEl.textContent = '';
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) { msgEl.textContent = data.error || 'Erreur'; return; }
+    const statusRes = await fetch('/api/auth/status');
+    const status = await statusRes.json();
+    if (!status.isAdmin) {
+      msgEl.textContent = "Identifiants valides, mais ce compte n'est pas admin.";
+      await fetch('/api/auth/logout', { method: 'POST' });
+      return;
+    }
+    document.getElementById('gate').style.display = 'none';
+    document.getElementById('main-content').style.display = 'block';
+    charger();
+  } catch (err) {
+    msgEl.textContent = err.message;
+  }
+}
+document.getElementById('gate-login').addEventListener('click', attemptGateLogin);
+document.getElementById('gate-pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') attemptGateLogin(); });
+
+(async function initGate() {
+  const res = await fetch('/api/auth/status');
+  const status = await res.json();
+  if (status.isAdmin) {
+    document.getElementById('gate').style.display = 'none';
+    document.getElementById('main-content').style.display = 'block';
+    charger();
+  }
+})();
+</script>
+</body>
+</html>

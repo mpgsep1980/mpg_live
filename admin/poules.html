@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Poules — Live</title>
+<link rel="stylesheet" href="/mpg-tokens.css">
+<link rel="stylesheet" href="/theme.css">
+<style>
+  :root {
+    --green: var(--accent-green); --green-dark: var(--accent-green);
+    --live-red: #e0393e;
+  }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 24px 14px 60px; }
+  a.back-link { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); text-decoration: none; font-size: 0.85em; margin-bottom: 14px; }
+  a.back-link:hover { color: var(--accent-green); }
+
+  header { margin-bottom: 18px; }
+  header h1 { font-size: 1.5em; margin: 0 0 10px; color: var(--text-navy); font-weight: 800; }
+  .controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+  #league-select, #gameweek-input {
+    background: var(--card-alt); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 5px 9px; font-size: 0.82em; font-weight: 600; font-family: inherit; cursor: pointer;
+  }
+  #gameweek-input { width: 3.5em; cursor: text; text-align: center; }
+  .gw-label { font-size: 0.78em; color: var(--muted); }
+  .sub { font-size: 0.8em; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--live-red); display: inline-block; animation: pulse 1.3s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  /* minmax un peu plus large qu'avant (220->250) -- chaque carte porte
+     maintenant aussi son mini-classement, pas juste le score (retour
+     utilisateur 2026-08-13). auto-fill retombe naturellement a 1 colonne sur
+     mobile (portable) sans media query dediee. */
+  .poules-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+  .poule-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 10px 12px; min-width: 0;
+  }
+  .poule-card .div-label {
+    color: var(--muted); font-size: 0.68em; text-transform: uppercase; letter-spacing: 0.4px;
+    margin-bottom: 6px; display: flex; justify-content: space-between;
+  }
+  .poule-card .archived-tag { color: var(--green); }
+  /* Seul le resultat (score) est cliquable -> detail du match -- le
+     classement, lui, reste consultable directement sans clic (retour
+     utilisateur 2026-08-13 : "je ne vois que les resultats et je dois
+     cliquer pour les classements... pour les details, juste un clic sur le
+     resultat"). */
+  a.poule-results { display: block; text-decoration: none; color: inherit; }
+  a.poule-results:hover .poule-match .score { color: var(--green); }
+  .poule-match { display: grid; grid-template-columns: 1fr auto 1fr; gap: 6px; align-items: center; padding: 3px 0; font-size: 0.8em; }
+  .poule-match .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .poule-match .name.away { text-align: right; }
+  .poule-match .score { font-weight: 800; text-align: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  /* Nom du manager d'origine (?id=) surligne partout ou il apparait --
+     resultats ET mini-classement, pas seulement /super-classement (retour
+     utilisateur 2026-08-13). */
+  .poule-match .name.me { color: var(--green); font-weight: 800; }
+
+  .mini-classement { width: 100%; border-collapse: collapse; margin-top: 8px; border-top: 1px solid var(--border); padding-top: 4px; font-size: 0.72em; }
+  .mini-classement td { padding: 2px 3px; }
+  .mini-classement tr.rank1 td { font-weight: 700; }
+  .mini-classement td.rank { color: var(--muted); width: 1.4em; border-left: 3px solid transparent; }
+  .mini-classement td.name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 1px; }
+  .mini-classement tr.me td { color: #fff; font-weight: 700; text-shadow: 0 1px 2px rgba(0,0,0,0.35); }
+  .mini-classement td.pts { text-align: right; color: var(--green); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .status-msg { display: block; text-align: center; color: var(--muted); font-size: 0.85em; margin-top: 20px; }
+  .status-msg.err { color: #c9484a; }
+</style>
+</head>
+<body>
+<div class="app-header">
+  <a class="app-title" href="/">MPG</a>
+  <nav>
+    <a href="/">Managers</a>
+    <a href="/poules" class="active">Poules</a>
+    <a href="/classement-ligue">Classement ligue</a>
+    <a href="/super-classement">Super classement</a>
+    <a href="/simulator">Simulateur</a>
+    <a href="/comptes">Comptes</a>
+    <a href="/config">Barèmes</a>
+    <a href="/token">Token API</a>
+  </nav>
+</div>
+<div class="wrap">
+  <a class="back-link" id="back-link" href="/">‹ Managers</a>
+  <header>
+    <h1 class="section-bar">Toutes les poules</h1>
+    <div class="controls">
+      <select id="league-select"><option>…</option></select>
+      <span class="gw-label">J</span><input id="gameweek-input" type="number" min="1" value="1">
+    </div>
+    <div class="sub"><span class="live-dot"></span> <span id="updated">chargement…</span></div>
+  </header>
+
+  <div id="poules" class="poules-grid"><span class="status-msg">Chargement…</span></div>
+</div>
+
+<script>
+// Nav reservee aux admins (retour utilisateur 2026-08-23 : "à garder pour
+// le ou les admins que je désigne") -- masque les 4 liens admin-only du nav
+// tant que la session n'est pas authentifiee comme un admin (cf.
+// core/auth.py::ADMIN_USER_IDS). Ne remplace PAS la protection reelle de
+// chaque page (gate propre a admin.html/comptes.html/simulator.html/
+// token.html) -- sert juste a ne pas les ANNONCER a un visiteur non-admin.
+(async function hideAdminNavIfNeeded() {
+  try {
+    const res = await fetch('/api/auth/status');
+    const status = await res.json();
+    if (!status.isAdmin) {
+      document.querySelectorAll(
+        '.app-header nav a[href="/simulator"], .app-header nav a[href="/comptes"], .app-header nav a[href="/config"], .app-header nav a[href="/token"]'
+      ).forEach(a => a.remove());
+    }
+  } catch (err) { /* pas bloquant -- nav complete par defaut si le check echoue */ }
+})();
+
+const params = new URLSearchParams(location.search);
+let leagues = [];
+let currentLeague = params.get('ligue') || 'QLRBXDCX2';
+let currentSeason = params.get('season') || null;
+let currentGameweek = params.get('gameweek') || '1';
+// Sans parametre explicite dans l'URL, on affiche la DERNIERE journee
+// presente dans live_snapshots/ pour la ligue courante (la plus recente
+// suivie par live_watch.py -- en cours si un match est live, sinon la
+// derniere terminee) plutot que de rester fige sur J1 (retour utilisateur
+// 2026-08-14 : "on voit par defaut les matchs de la journee precedente, il
+// faudrait mettre celle en cours"). Un gameweek explicite dans l'URL reste
+// toujours respecte tel quel (lien partage, retour arriere navigateur...).
+let gameweekWasExplicit = params.has('gameweek');
+// userId de la page manager d'origine (lien "Toutes les poules") -- sert de
+// fil d'Ariane, le retour pointe vers CETTE page plutot que la racine
+// Managers (retour utilisateur 2026-08-13 : "cascade Managers > 'User' >
+// Classement"). Repli sur la session connectee (retour utilisateur
+// 2026-08-23) si aucun ?id= explicite -- arriver ici via le nav (pas via
+// /manager?id=...) ne surlignait sinon jamais rien, meme authentifie.
+let originUserId = params.get('id');
+// MarkerColour personnel de chaque manager, repere visuel par ligne de
+// classement (retour utilisateur 2026-08-13) -- charge une fois, ne change
+// pas d'un poll a l'autre.
+let colorByName = {};
+// Nom (minuscules) du manager d'origine (?id=) -- surligne SON nom partout
+// ou il apparait dans les poules (resultats ET mini-classement), pas
+// seulement sur /super-classement (retour utilisateur 2026-08-13 : "met le
+// nom du joueur en surbrillance egalement dans les poules").
+let highlightName = null;
+
+async function loadManagerColors() {
+  if (!originUserId) {
+    try {
+      const authRes = await fetch('/api/auth/status');
+      const authStatus = await authRes.json();
+      if (authStatus.loggedInUserId) originUserId = authStatus.loggedInUserId;
+    } catch (err) { /* pas bloquant */ }
+  }
+  try {
+    const res = await fetch('/api/managers');
+    const data = await res.json();
+    (data.managers || []).forEach(m => {
+      if (m.markerColour) colorByName[(m.realName || '').toLowerCase()] = m.markerColour;
+    });
+    if (originUserId) {
+      const m = (data.managers || []).find(mm => mm.userId === originUserId);
+      if (m) {
+        const back = document.getElementById('back-link');
+        back.href = `/manager?id=${encodeURIComponent(originUserId)}`;
+        back.textContent = `‹ ${m.realName}`;
+        highlightName = (m.realName || '').toLowerCase();
+      }
+    }
+  } catch (err) { /* pas bloquant -- juste pas de couleur/retour personnalise si ca echoue */ }
+}
+
+function updateUrl() {
+  const url = new URL(location.href);
+  url.searchParams.set('ligue', currentLeague);
+  url.searchParams.set('season', currentSeason);
+  url.searchParams.set('gameweek', currentGameweek);
+  history.replaceState(null, '', url);
+}
+
+function isMe(name) {
+  return highlightName && (name || '').toLowerCase() === highlightName;
+}
+
+function pouleCardHtml(division, matches, archived, classementRows) {
+  const liveUrl = `/live?ligue=${currentLeague}&season=${currentSeason}&gameweek=${currentGameweek}&division=${division}`
+    + (originUserId ? `&id=${encodeURIComponent(originUserId)}` : '');
+  const matchesHtml = matches.map(m => {
+    const home = m.home, away = m.away;
+    const homeName = home.realName || home.userId || '';
+    const awayName = away.realName || away.userId || '';
+    return `
+      <div class="poule-match">
+        <span class="name${isMe(homeName) ? ' me' : ''}">${homeName}</span>
+        <span class="score"><span class="side">${home.score ?? '–'}</span> - <span class="side">${away.score ?? '–'}</span></span>
+        <span class="name away${isMe(awayName) ? ' me' : ''}">${awayName}</span>
+      </div>`;
+  }).join('');
+
+  const classementHtml = (classementRows && classementRows.length) ? `
+    <table class="mini-classement">
+      ${classementRows.map(r => {
+        const color = colorByName[(r.player_name || '').toLowerCase()] || 'transparent';
+        const mine = isMe(r.player_name);
+        return `
+        <tr class="${r.rang === 1 ? 'rank1' : ''}${mine ? ' me' : ''}"${mine ? ` style="background:${color}"` : ''}>
+          <td class="rank" style="border-left-color:${color}">${r.rang}</td>
+          <td class="name">${r.player_name || ''}</td>
+          <td class="pts">${r.points_division ?? 0} pts</td>
+        </tr>`;
+      }).join('')}
+    </table>` : '';
+
+  return `
+    <div class="poule-card">
+      <div class="div-label"><span>Division ${division}</span>${archived ? '<span class="archived-tag">Terminé</span>' : ''}</div>
+      <a class="poule-results" href="${liveUrl}">${matchesHtml}</a>
+      ${classementHtml}
+    </div>`;
+}
+
+async function chargerDivisions() {
+  const el = document.getElementById('poules');
+  try {
+    const res = await fetch(`/api/live-snapshot?shortId=${currentLeague}&season=${currentSeason}&gameweek=${currentGameweek}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.statusText);
+
+    const divisions = data.divisions || {};
+    const numbers = Object.keys(divisions).map(Number).sort((a, b) => a - b);
+    if (!numbers.length) {
+      el.innerHTML = '<span class="status-msg">Aucune division trouvée pour cette journée.</span>';
+      return;
+    }
+
+    // Classement direct sous chaque poule (retour utilisateur 2026-08-13 :
+    // "il faudrait les classements en vision directe... pour les details,
+    // juste un clic sur le resultat") -- un fetch par division, en parallele.
+    const classements = await Promise.all(numbers.map(n =>
+      fetch(`/api/division-classement?shortId=${currentLeague}&season=${currentSeason}&gameweek=${currentGameweek}&division=${n}`)
+        .then(r => r.json()).then(d => d.rows || []).catch(() => [])
+    ));
+
+    el.innerHTML = numbers.map((n, i) =>
+      pouleCardHtml(n, divisions[String(n)] || [], data.archived, classements[i])
+    ).join('');
+
+    const updated = data.updatedAt ? new Date(data.updatedAt) : new Date();
+    document.getElementById('updated').textContent = `maj ${updated.toLocaleTimeString('fr-FR')}`;
+  } catch (err) {
+    el.innerHTML = `<span class="status-msg err">Erreur : ${err.message}</span>`;
+  }
+}
+
+async function resolveCurrentGameweek() {
+  if (gameweekWasExplicit) return;
+  try {
+    const res = await fetch(`/api/simulate-gameweeks?shortId=${currentLeague}&season=${currentSeason}`);
+    const data = await res.json();
+    const weeks = data.gameweeks || [];
+    if (weeks.length) currentGameweek = String(Math.max(...weeks));
+  } catch (err) { /* pas bloquant -- reste sur la valeur courante */ }
+  document.getElementById('gameweek-input').value = currentGameweek;
+}
+
+async function loadLeagues() {
+  const res = await fetch('/api/leagues');
+  const data = await res.json();
+  leagues = data.leagues || [];
+
+  const select = document.getElementById('league-select');
+  select.innerHTML = leagues.map(l => `<option value="${l.code}">${l.nom}</option>`).join('');
+
+  if (!leagues.find(l => l.code === currentLeague) && leagues.length) {
+    currentLeague = leagues[0].code;
+  }
+  select.value = currentLeague;
+
+  const league = leagues.find(l => l.code === currentLeague);
+  if (!currentSeason && league) currentSeason = String(league.seasonSearch);
+  document.title = `Poules — ${league ? league.nom : currentLeague}`;
+  await resolveCurrentGameweek();
+}
+
+document.getElementById('league-select').addEventListener('change', async (e) => {
+  currentLeague = e.target.value;
+  const league = leagues.find(l => l.code === currentLeague);
+  currentSeason = league ? String(league.seasonSearch) : currentSeason;
+  await resolveCurrentGameweek();
+  updateUrl();
+  document.title = `Poules — ${league ? league.nom : currentLeague}`;
+  chargerDivisions();
+});
+
+document.getElementById('gameweek-input').addEventListener('change', (e) => {
+  currentGameweek = e.target.value || '1';
+  gameweekWasExplicit = true;  // choix manuel -- ne plus l'ecraser sur un futur changement de ligue
+  updateUrl();
+  chargerDivisions();
+});
+
+(async function init() {
+  await Promise.all([loadLeagues(), loadManagerColors()]);
+  updateUrl();
+  await chargerDivisions();
+  setInterval(chargerDivisions, 30000);
+})();
+</script>
+</body>
+</html>

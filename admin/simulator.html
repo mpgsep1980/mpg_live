@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulateur — Ligue 2 ÉKT</title>
+<link rel="stylesheet" href="/mpg-tokens.css">
+<link rel="stylesheet" href="/theme.css">
+<style>
+  :root {
+    --green: var(--accent-green); --green-dark: var(--accent-green);
+    --live-red: #e0393e; --gold: #d9a441; --up: #22a559; --down: #e2453d;
+  }
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 24px 14px 60px; }
+  a.back-link { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); text-decoration: none; font-size: 0.85em; margin-bottom: 14px; }
+  a.back-link:hover { color: var(--accent-green); }
+
+  header { text-align: center; margin-bottom: 18px; }
+  header h1 { font-size: 1.4em; margin: 0 0 10px; color: var(--text-navy); font-weight: 800; }
+
+  .controls { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .gw-field { display: flex; align-items: center; gap: 6px; font-size: 0.85em; color: var(--muted); }
+  .gw-field input {
+    width: 4em; background: var(--card-alt); border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; padding: 6px 8px; font-size: 1em; font-family: inherit; text-align: center;
+  }
+  button {
+    background: var(--green); color: #fff; border: none; border-radius: 8px;
+    padding: 9px 18px; font-size: 0.9em; font-weight: 700; cursor: pointer;
+  }
+  button:hover { background: var(--green-dark); }
+  button:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; }
+  button.secondary { background: var(--card-alt); color: var(--text); border: 1px solid var(--border); }
+  button.danger { background: var(--card-alt); color: var(--down); border: 1px solid var(--down); }
+  button.danger:hover { background: var(--down); color: #fff; }
+
+  .progress-wrap { max-width: 480px; margin: 0 auto 20px; }
+  .progress-label { text-align: center; font-size: 0.85em; color: var(--muted); margin-bottom: 4px; }
+  .progress-bar { height: 10px; border-radius: 999px; background: var(--card-alt); border: 1px solid var(--border); overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, var(--green), var(--gold)); width: 0%; transition: width 0.4s linear; }
+  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--live-red); display: inline-block; animation: pulse 1.2s infinite; margin-right: 6px; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  .grid3 { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 980px) { .grid3 { grid-template-columns: 1fr; } }
+
+  section.panel { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px; }
+  section.panel h2 { font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin: 0 0 10px; }
+
+  .poules-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; max-height: 640px; overflow-y: auto; }
+  .poule-card { background: var(--card-alt); border: 1px solid var(--border); border-radius: 8px; padding: 8px; font-size: 0.72em; }
+  .poule-card .div-label { color: var(--muted); font-size: 0.85em; text-transform: uppercase; margin-bottom: 4px; }
+  .poule-match { display: grid; grid-template-columns: 1fr auto 1fr; gap: 4px; align-items: center; padding: 2px 0; }
+  .poule-match .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .poule-match .name.away { text-align: right; }
+  .poule-match .score { font-weight: 800; text-align: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .poule-match.flash { animation: flash 1s ease-out; }
+  @keyframes flash { 0% { background: color-mix(in srgb, var(--gold) 45%, transparent); } 100% { background: transparent; } }
+
+  table.classement-table { width: 100%; border-collapse: collapse; font-size: 0.78em; max-height: 640px; }
+  .table-scroll { max-height: 640px; overflow-y: auto; }
+  .classement-table th, .classement-table td { padding: 5px 6px; text-align: left; }
+  .classement-table th { color: var(--muted); font-weight: 600; font-size: 0.85em; position: sticky; top: 0; background: var(--card); }
+  .classement-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .classement-table td.rank { width: 2.2em; color: var(--muted); }
+  .classement-table tbody tr { border-top: 1px solid var(--border); }
+  .classement-table td.points { font-weight: 700; color: var(--green); }
+  .move { font-weight: 800; margin-right: 3px; }
+  .move.up { color: var(--up); }
+  .move.down { color: var(--down); }
+  .row-flash { animation: rowflash 1.2s ease-out; }
+  @keyframes rowflash { 0% { background: color-mix(in srgb, var(--gold) 30%, transparent); } 100% { background: transparent; } }
+
+  .status-msg { display: block; text-align: center; color: var(--muted); font-size: 0.85em; margin-top: 16px; }
+  .status-msg.err { color: var(--down); }
+
+  .gate-card {
+    max-width: 380px; margin: 60px auto; background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 20px; text-align: center;
+  }
+  .gate-card input[type="password"] {
+    display: block; width: 100%; margin: 12px 0; background: var(--card-alt); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; padding: 8px 10px; font-size: 0.95em; font-family: inherit;
+  }
+  .gate-card button { width: 100%; }
+</style>
+</head>
+<body>
+<div class="app-header">
+  <a class="app-title" href="/">MPG</a>
+  <nav>
+    <a href="/">Managers</a>
+    <a href="/poules">Poules</a>
+    <a href="/classement-ligue">Classement ligue</a>
+    <a href="/super-classement">Super classement</a>
+    <a href="/simulator" class="active">Simulateur</a>
+    <a href="/comptes">Comptes</a>
+    <a href="/config">Barèmes</a>
+    <a href="/token">Token API</a>
+  </nav>
+</div>
+<div class="wrap">
+  <a class="back-link" href="/">‹ Managers</a>
+
+  <div id="gate" class="gate-card">
+    <p>Réservé aux admins.</p>
+    <input type="text" id="gate-userid" placeholder="Identifiant admin" autocomplete="username">
+    <input type="password" id="gate-pw" placeholder="Mot de passe" autocomplete="current-password">
+    <button id="gate-login">Se connecter</button>
+    <div class="status-msg err" id="gate-msg"></div>
+  </div>
+
+  <div id="main-content" style="display:none;">
+    <header>
+      <h1>Simulateur de journée accélérée — Ligue 2 ÉKT</h1>
+      <div class="controls">
+        <label class="gw-field">Gabarit (source) <input type="number" id="gw-source" min="1" value="1"></label>
+        <label class="gw-field">Journée à simuler <input type="number" id="gw-target" min="1" value="2"></label>
+      </div>
+      <div class="controls">
+        <button id="btn-start">Lancer (90s)</button>
+        <button id="btn-stop" class="secondary" disabled>Arrêter</button>
+        <button id="btn-delete" class="danger">Supprimer cette journée</button>
+        <button id="btn-logout" class="secondary">Se déconnecter</button>
+      </div>
+      <div class="progress-wrap">
+        <div class="progress-label" id="progress-label">Prêt — appuie sur « Lancer »</div>
+        <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+      </div>
+    </header>
+
+    <div class="grid3">
+      <section class="panel">
+        <h2>Poules (18 divisions)</h2>
+        <div id="poules" class="poules-grid"><span class="status-msg">En attente…</span></div>
+      </section>
+      <section class="panel">
+        <h2>Classement Ligue 2 ÉKT (72 managers)</h2>
+        <div id="ligue" class="table-scroll"><span class="status-msg">En attente…</span></div>
+      </section>
+      <section class="panel">
+        <h2>Super Classement (toutes ligues)</h2>
+        <div id="super" class="table-scroll"><span class="status-msg">En attente…</span></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+// Nav reservee aux admins (retour utilisateur 2026-08-23 : "à garder pour
+// le ou les admins que je désigne") -- masque les 4 liens admin-only du nav
+// tant que la session n'est pas authentifiee comme un admin (redondant avec
+// le gate de CETTE page, mais coherent avec les autres pages du site).
+(async function hideAdminNavIfNeeded() {
+  try {
+    const res = await fetch('/api/auth/status');
+    const status = await res.json();
+    if (!status.isAdmin) {
+      document.querySelectorAll(
+        '.app-header nav a[href="/simulator"], .app-header nav a[href="/comptes"], .app-header nav a[href="/config"], .app-header nav a[href="/token"]'
+      ).forEach(a => a.remove());
+    }
+  } catch (err) { /* pas bloquant */ }
+})();
+
+// Page admin-only (cf. retour utilisateur 2026-08-12 : "on va placer le
+// simulateur dans un profil admin") -- identifiant admin saisi au gate,
+// plus code en dur (retour utilisateur 2026-08-23 : plusieurs admins
+// possibles, cf. core/auth.py::ADMIN_USER_IDS). Le serveur revalide
+// independamment sur /api/simulate-start|stop -- le gate cote client ne sert
+// qu'a afficher le bon formulaire, jamais a autoriser quoi que ce soit.
+const SHORT_ID = 'QLRBXDCX2', SEASON = '21';
+// Journee source (gabarit) / cible, EDITABLES depuis l'UI (champs gw-source/
+// gw-target) -- ne plus figer sur J1->J2, retour utilisateur 2026-08-12 :
+// "enchainer une simulation de la J3 au lieu de recommencer la J2".
+function sourceGameweek() { return parseInt(document.getElementById('gw-source').value, 10) || 1; }
+function targetGameweek() { return parseInt(document.getElementById('gw-target').value, 10) || 2; }
+
+let pollTimer = null;
+let prevScores = new Map();   // "div:matchIdx" -> "home-away" pour detecter les changements
+let prevRanksLigue = new Map();  // userId -> rang precedent
+let prevRanksSuper = new Map();  // player_name -> rang precedent
+
+function setRunningUI(running) {
+  document.getElementById('btn-start').disabled = running;
+  document.getElementById('btn-stop').disabled = !running;
+  document.getElementById('gw-source').disabled = running;
+  document.getElementById('gw-target').disabled = running;
+}
+
+async function refreshGameweekDefaults() {
+  try {
+    const res = await fetch(`/api/simulate-gameweeks?shortId=${SHORT_ID}&season=${SEASON}`);
+    const data = await res.json();
+    const gws = data.gameweeks || [];
+    if (gws.length) {
+      const latest = Math.max(...gws);
+      document.getElementById('gw-source').value = latest;
+      document.getElementById('gw-target').value = latest + 1;
+    }
+  } catch (err) { /* defauts 1/2 laisses tels quels si l'appel echoue */ }
+}
+
+async function startSimulation() {
+  setRunningUI(true);
+  prevScores.clear(); prevRanksLigue.clear(); prevRanksSuper.clear();
+  document.getElementById('progress-label').innerHTML = '<span class="live-dot"></span>Coup d\'envoi…';
+  try {
+    const res = await fetch('/api/simulate-start', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ shortId: SHORT_ID, season: SEASON, gameweek: targetGameweek(), sourceGameweek: sourceGameweek(), durationSeconds: 90 }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    poll();
+    pollTimer = setInterval(poll, 1500);
+  } catch (err) {
+    document.getElementById('progress-label').textContent = `Erreur : ${err.message}`;
+    setRunningUI(false);
+  }
+}
+
+async function stopSimulation() {
+  await fetch('/api/simulate-stop', { method: 'POST' });
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  setRunningUI(false);
+}
+
+function pouleCardHtml(div, match) {
+  const home = match.home, away = match.away;
+  const key = `${div}:${match.matchId || ''}`;
+  const scoreKey = `${home.score}-${away.score}`;
+  const flashed = prevScores.get(key) !== undefined && prevScores.get(key) !== scoreKey;
+  prevScores.set(key, scoreKey);
+  return `
+    <div class="poule-match${flashed ? ' flash' : ''}">
+      <span class="name">${home.realName || home.userId || ''}</span>
+      <span class="score">${home.score} - ${away.score}</span>
+      <span class="name away">${away.realName || away.userId || ''}</span>
+    </div>`;
+}
+
+function poulesHtml(divisions) {
+  const numbers = Object.keys(divisions).map(Number).sort((a, b) => a - b);
+  return numbers.map(n => {
+    const matches = divisions[String(n)] || [];
+    return `<div class="poule-card"><div class="div-label">Division ${n}</div>${matches.map(m => pouleCardHtml(n, m)).join('')}</div>`;
+  }).join('');
+}
+
+function moveIndicator(prevMap, key, rank) {
+  const prev = prevMap.get(key);
+  prevMap.set(key, rank);
+  if (prev === undefined || prev === rank) return '';
+  return prev > rank ? '<span class="move up">▲</span>' : '<span class="move down">▼</span>';
+}
+
+function ligueTableHtml(rows) {
+  const top = rows.slice(0, 20);
+  const body = top.map(r => {
+    const flash = moveIndicator(prevRanksLigue, r.userId, r.rang);
+    return `
+      <tr class="${flash ? 'row-flash' : ''}">
+        <td class="rank">${flash}#${r.rang}</td>
+        <td>${r.player_name || r.userId}</td>
+        <td class="num points">${(r.points ?? 0).toFixed ? r.points.toFixed(1) : r.points}</td>
+        <td class="num">${r.victory ?? 0}/${r.draw ?? 0}/${r.defeat ?? 0}</td>
+      </tr>`;
+  }).join('');
+  return `<table class="classement-table"><thead><tr><th>#</th><th>Manager</th><th>Pts</th><th>V/N/D</th></tr></thead><tbody>${body}</tbody></table>`;
+}
+
+function superTableHtml(rows) {
+  const top = rows.slice(0, 20);
+  const body = top.map(r => {
+    const flash = moveIndicator(prevRanksSuper, r.player_name, r.rang);
+    return `
+      <tr class="${flash ? 'row-flash' : ''}">
+        <td class="rank">${flash}#${r.rang}</td>
+        <td>${r.player_name}</td>
+        <td class="num points">${(r.points ?? 0).toFixed ? r.points.toFixed(1) : r.points}</td>
+      </tr>`;
+  }).join('');
+  return `<table class="classement-table"><thead><tr><th>#</th><th>Manager</th><th>Pts</th></tr></thead><tbody>${body}</tbody></table>`;
+}
+
+async function poll() {
+  try {
+    const statusRes = await fetch('/api/simulate-status');
+    const status = await statusRes.json();
+    const pct = Math.round((status.minute / status.totalMinutes) * 100);
+    document.getElementById('progress-fill').style.width = `${pct}%`;
+    document.getElementById('progress-label').innerHTML = status.running
+      ? `<span class="live-dot"></span>Minute ${status.minute}' / 90'`
+      : (status.minute >= 90 ? `Terminé — 90'` : 'Prêt — appuie sur « Lancer »');
+
+    const gw = targetGameweek();
+    const [snapRes, ligueRes, superRes] = await Promise.all([
+      fetch(`/api/live-snapshot?shortId=${SHORT_ID}&season=${SEASON}&gameweek=${gw}`),
+      fetch(`/api/league-classement?shortId=${SHORT_ID}&season=${SEASON}&gameweek=${gw}`),
+      fetch('/api/super-classement'),
+    ]);
+    const snap = await snapRes.json();
+    const ligue = await ligueRes.json();
+    const superC = await superRes.json();
+
+    if (snap.divisions) document.getElementById('poules').innerHTML = poulesHtml(snap.divisions);
+    if (ligue.rows) document.getElementById('ligue').innerHTML = ligueTableHtml(ligue.rows);
+    if (superC.rows) document.getElementById('super').innerHTML = superTableHtml(superC.rows);
+
+    if (!status.running && status.minute >= 90) {
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      setRunningUI(false);
+    }
+  } catch (err) {
+    document.getElementById('progress-label').textContent = `Erreur : ${err.message}`;
+  }
+}
+
+async function deleteSimulation() {
+  const gw = targetGameweek();
+  if (!confirm('Supprimer la journée J' + gw + ' (même terminée) ? Le fichier live_snapshots correspondant sera effacé.')) return;
+  await fetch('/api/simulate-stop', { method: 'POST' });
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  const res = await fetch('/api/simulate-delete', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ shortId: SHORT_ID, season: SEASON, gameweek: gw }),
+  });
+  const data = await res.json();
+  setRunningUI(false);
+  await refreshGameweekDefaults();
+  prevScores.clear(); prevRanksLigue.clear(); prevRanksSuper.clear();
+  document.getElementById('progress-fill').style.width = '0%';
+  document.getElementById('progress-label').textContent = data.deleted
+    ? 'Simulation supprimée — prêt pour un nouveau lancement'
+    : 'Rien à supprimer — prêt à lancer';
+  document.getElementById('poules').innerHTML = '<span class="status-msg">En attente…</span>';
+  document.getElementById('ligue').innerHTML = '<span class="status-msg">En attente…</span>';
+  document.getElementById('super').innerHTML = '<span class="status-msg">En attente…</span>';
+}
+
+document.getElementById('btn-start').addEventListener('click', startSimulation);
+document.getElementById('btn-stop').addEventListener('click', stopSimulation);
+document.getElementById('btn-delete').addEventListener('click', deleteSimulation);
+document.getElementById('btn-logout').addEventListener('click', async () => {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  location.reload();
+});
+
+async function attemptGateLogin() {
+  const userId = document.getElementById('gate-userid').value.trim();
+  const password = document.getElementById('gate-pw').value;
+  const msgEl = document.getElementById('gate-msg');
+  msgEl.textContent = '';
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) { msgEl.textContent = data.error || 'Erreur'; return; }
+    // Le login reussit pour N'IMPORTE QUEL manager -- seul un second appel a
+    // /api/auth/status confirme que CE compte est bien admin (retour
+    // utilisateur 2026-08-23, plusieurs admins possibles desormais).
+    const statusRes = await fetch('/api/auth/status');
+    const status = await statusRes.json();
+    if (!status.isAdmin) {
+      msgEl.textContent = "Identifiants valides, mais ce compte n'est pas admin.";
+      await fetch('/api/auth/logout', { method: 'POST' });
+      return;
+    }
+    await enterSimulator();
+  } catch (err) {
+    msgEl.textContent = err.message;
+  }
+}
+document.getElementById('gate-login').addEventListener('click', attemptGateLogin);
+document.getElementById('gate-pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') attemptGateLogin(); });
+
+async function enterSimulator() {
+  document.getElementById('gate').style.display = 'none';
+  document.getElementById('main-content').style.display = 'block';
+  const statusRes = await fetch('/api/simulate-status');
+  const status = await statusRes.json();
+  if (status.running) {
+    // Une simulation tourne deja (ex. page rechargee en cours de route) --
+    // synchroniser les champs sur SA journee, pas sur refreshGameweekDefaults
+    // qui proposerait "derniere+1" et ferait poller le mauvais fichier.
+    document.getElementById('gw-source').value = status.sourceGameweek;
+    document.getElementById('gw-target').value = status.gameweek;
+    setRunningUI(true);
+    poll();
+    pollTimer = setInterval(poll, 1500);
+  } else {
+    await refreshGameweekDefaults();
+  }
+}
+
+(async function init() {
+  // isAdmin ne depend que de la session (pas d'un userId cible) -- appel
+  // sans parametre, cf. admin_server.py::api_auth_status.
+  const res = await fetch('/api/auth/status');
+  const status = await res.json();
+  if (status.isAdmin) {
+    await enterSimulator();
+  }
+})();
+</script>
+</body>
+</html>

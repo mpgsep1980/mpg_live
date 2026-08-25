@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Comptes managers</title>
+<link rel="stylesheet" href="/mpg-tokens.css">
+<link rel="stylesheet" href="/theme.css">
+<style>
+  :root {
+    --green: var(--accent-green); --green-dark: var(--accent-green);
+    --gold: #d9a441; --down: #c9484a;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 24px 14px 60px; }
+  a.back-link { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); text-decoration: none; font-size: 0.85em; margin-bottom: 14px; }
+  a.back-link:hover { color: var(--accent-green); }
+
+  header { margin-bottom: 18px; }
+  header h1 { font-size: 1.4em; margin: 0; color: var(--text-navy); font-weight: 800; }
+
+  .gate-card {
+    max-width: 380px; margin: 60px auto; background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 20px; text-align: center;
+  }
+  .gate-card input[type="password"] {
+    display: block; width: 100%; margin: 12px 0; background: var(--card-alt); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; padding: 8px 10px; font-size: 0.95em; font-family: inherit;
+  }
+  .gate-card button { width: 100%; }
+  button {
+    background: var(--green); color: #fff; border: none; border-radius: 8px;
+    padding: 8px 14px; font-size: 0.85em; font-weight: 700; cursor: pointer;
+  }
+  button:hover { background: var(--green-dark); }
+  button.secondary { background: var(--card-alt); color: var(--text); border: 1px solid var(--border); }
+  button.danger { background: var(--card-alt); color: var(--down); border: 1px solid var(--down); }
+  button.danger:hover { background: var(--down); color: #fff; }
+
+  .search-row { margin-bottom: 12px; }
+  .search-row input {
+    width: 100%; background: var(--card-alt); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 9px 12px; font-size: 0.95em; font-family: inherit;
+  }
+
+  .manager-row {
+    display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 8px 12px; margin-bottom: 6px; flex-wrap: wrap;
+  }
+  .manager-row.hidden { display: none; }
+  .manager-row .avatar { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; background: var(--card-alt); flex: none; }
+  .manager-row .name { font-weight: 600; flex: 1; min-width: 100px; }
+  .status-tag { font-size: 0.72em; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .status-tag.on { background: color-mix(in srgb, var(--green) 20%, transparent); color: var(--green); }
+  .status-tag.off { background: var(--card-alt); color: var(--muted); border: 1px solid var(--border); }
+  .row-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .pw-form { display: none; gap: 6px; align-items: center; flex-basis: 100%; margin-top: 6px; }
+  .pw-form.open { display: flex; }
+  .pw-form input {
+    background: var(--card-alt); border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; padding: 5px 8px; font-size: 0.9em; font-family: inherit; flex: 1; min-width: 120px;
+  }
+  .row-msg { font-size: 0.75em; color: var(--muted); flex-basis: 100%; }
+  .row-msg.err { color: var(--down); }
+
+  .status-msg { display: block; text-align: center; color: var(--muted); font-size: 0.85em; margin-top: 20px; }
+  .status-msg.err { color: var(--down); }
+</style>
+</head>
+<body>
+<div class="app-header">
+  <a class="app-title" href="/">MPG</a>
+  <nav>
+    <a href="/">Managers</a>
+    <a href="/poules">Poules</a>
+    <a href="/classement-ligue">Classement ligue</a>
+    <a href="/super-classement">Super classement</a>
+    <a href="/simulator">Simulateur</a>
+    <a href="/comptes" class="active">Comptes</a>
+    <a href="/config">Barèmes</a>
+    <a href="/token">Token API</a>
+  </nav>
+</div>
+<div class="wrap">
+  <a class="back-link" href="/">‹ Managers</a>
+
+  <div id="gate" class="gate-card">
+    <p>Réservé aux admins.</p>
+    <input type="text" id="gate-userid" placeholder="Identifiant admin" autocomplete="username">
+    <input type="password" id="gate-pw" placeholder="Mot de passe" autocomplete="current-password">
+    <button id="gate-login">Se connecter</button>
+    <div class="status-msg err" id="gate-msg"></div>
+  </div>
+
+  <div id="main-content" style="display:none;">
+    <header><h1>Comptes managers</h1></header>
+    <div class="search-row">
+      <input type="text" id="search" placeholder="Rechercher un manager…">
+    </div>
+    <div id="list"><span class="status-msg">Chargement…</span></div>
+  </div>
+</div>
+
+<script>
+// Nav reservee aux admins (retour utilisateur 2026-08-23 : "à garder pour
+// le ou les admins que je désigne") -- masque les 4 liens admin-only du nav
+// tant que la session n'est pas authentifiee comme un admin (redondant avec
+// le gate de CETTE page, mais coherent avec les autres pages du site).
+(async function hideAdminNavIfNeeded() {
+  try {
+    const res = await fetch('/api/auth/status');
+    const status = await res.json();
+    if (!status.isAdmin) {
+      document.querySelectorAll(
+        '.app-header nav a[href="/simulator"], .app-header nav a[href="/comptes"], .app-header nav a[href="/config"], .app-header nav a[href="/token"]'
+      ).forEach(a => a.remove());
+    }
+  } catch (err) { /* pas bloquant */ }
+})();
+
+function setPwFormOpen(userId, open) {
+  const form = document.getElementById(`pw-form-${userId}`);
+  if (form) form.classList.toggle('open', open);
+}
+
+function rowHtml(m, hasPassword) {
+  return `
+    <div class="manager-row" data-name="${(m.realName || '').toLowerCase()}">
+      <img class="avatar" src="${m.avatarUrl || ''}" alt="" onerror="this.style.visibility='hidden'">
+      <span class="name">${m.realName}</span>
+      <span class="status-tag ${hasPassword ? 'on' : 'off'}">${hasPassword ? '✓ Compte actif' : '— Pas de compte'}</span>
+      <div class="row-actions">
+        <button class="secondary" onclick="setPwFormOpen('${m.userId}', true)">${hasPassword ? 'Changer' : 'Définir'} le mot de passe</button>
+        ${hasPassword ? `<button class="danger" onclick="resetPassword('${m.userId}', '${(m.realName || '').replace(/'/g, "\\'")}')">Réinitialiser (vider)</button>` : ''}
+      </div>
+      <div class="pw-form" id="pw-form-${m.userId}">
+        <input type="password" id="pw-input-${m.userId}" placeholder="Nouveau mot de passe">
+        <button onclick="submitPassword('${m.userId}')">Valider</button>
+        <button class="secondary" onclick="setPwFormOpen('${m.userId}', false)">Annuler</button>
+      </div>
+      <div class="row-msg" id="row-msg-${m.userId}"></div>
+    </div>`;
+}
+
+async function submitPassword(userId) {
+  const input = document.getElementById(`pw-input-${userId}`);
+  const msgEl = document.getElementById(`row-msg-${userId}`);
+  const password = input.value;
+  msgEl.textContent = '';
+  msgEl.className = 'row-msg';
+  try {
+    const res = await fetch('/api/auth/set-password', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) { msgEl.textContent = data.error || 'Erreur'; msgEl.className = 'row-msg err'; return; }
+    msgEl.textContent = '✓ Mot de passe défini.';
+    setPwFormOpen(userId, false);
+    input.value = '';
+    charger();
+  } catch (err) {
+    msgEl.textContent = err.message; msgEl.className = 'row-msg err';
+  }
+}
+
+async function resetPassword(userId, realName) {
+  if (!confirm(`Réinitialiser (vider) le mot de passe de ${realName} ? Il devra en recréer un lui-même à sa prochaine connexion.`)) return;
+  const msgEl = document.getElementById(`row-msg-${userId}`);
+  try {
+    const res = await fetch('/api/auth/admin-reset-password', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    });
+    const data = await res.json();
+    if (!res.ok) { msgEl.textContent = data.error || 'Erreur'; msgEl.className = 'row-msg err'; return; }
+    charger();
+  } catch (err) {
+    msgEl.textContent = err.message; msgEl.className = 'row-msg err';
+  }
+}
+
+function applyFilter() {
+  const query = document.getElementById('search').value.trim().toLowerCase();
+  document.querySelectorAll('#list .manager-row').forEach(row => {
+    row.classList.toggle('hidden', query && !row.dataset.name.includes(query));
+  });
+}
+document.getElementById('search').addEventListener('input', applyFilter);
+
+async function charger() {
+  const el = document.getElementById('list');
+  try {
+    const [managersRes, accountsRes] = await Promise.all([
+      fetch('/api/managers'),
+      fetch('/api/auth/accounts-status'),
+    ]);
+    const managersData = await managersRes.json();
+    const accountsData = await accountsRes.json();
+    if (!accountsRes.ok) throw new Error(accountsData.error || accountsRes.statusText);
+    const withPassword = new Set(accountsData.userIdsWithPassword || []);
+    const managers = managersData.managers || [];
+    el.innerHTML = managers.map(m => rowHtml(m, withPassword.has(m.userId))).join('');
+    applyFilter();
+  } catch (err) {
+    el.innerHTML = `<span class="status-msg err">Erreur : ${err.message}</span>`;
+  }
+}
+
+async function attemptGateLogin() {
+  const userId = document.getElementById('gate-userid').value.trim();
+  const password = document.getElementById('gate-pw').value;
+  const msgEl = document.getElementById('gate-msg');
+  msgEl.textContent = '';
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) { msgEl.textContent = data.error || 'Erreur'; return; }
+    // Le login reussit pour N'IMPORTE QUEL manager (userId/password valides) --
+    // seul un second appel a /api/auth/status confirme que CE compte est bien
+    // admin (retour utilisateur 2026-08-23, gate desormais ouvert a plusieurs
+    // admins designes, pas un seul userId code en dur).
+    const statusRes = await fetch('/api/auth/status');
+    const status = await statusRes.json();
+    if (!status.isAdmin) {
+      msgEl.textContent = "Identifiants valides, mais ce compte n'est pas admin.";
+      await fetch('/api/auth/logout', { method: 'POST' });
+      return;
+    }
+    document.getElementById('gate').style.display = 'none';
+    document.getElementById('main-content').style.display = 'block';
+    charger();
+  } catch (err) {
+    msgEl.textContent = err.message;
+  }
+}
+document.getElementById('gate-login').addEventListener('click', attemptGateLogin);
+document.getElementById('gate-pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') attemptGateLogin(); });
+
+(async function init() {
+  const res = await fetch('/api/auth/status');
+  const status = await res.json();
+  if (status.isAdmin) {
+    document.getElementById('gate').style.display = 'none';
+    document.getElementById('main-content').style.display = 'block';
+    charger();
+  }
+})();
+</script>
+</body>
+</html>

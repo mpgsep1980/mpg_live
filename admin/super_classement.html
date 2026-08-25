@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Super Classement — Live</title>
+<link rel="stylesheet" href="/mpg-tokens.css">
+<link rel="stylesheet" href="/theme.css">
+<style>
+  :root {
+    --green: var(--accent-green); --green-dark: var(--accent-green);
+    --gold: #d9a441; --live-red: #e0393e;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 24px 14px 60px; }
+  a.back-link { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); text-decoration: none; font-size: 0.85em; margin-bottom: 14px; }
+  a.back-link:hover { color: var(--accent-green); }
+
+  header { margin-bottom: 18px; }
+  header h1 { font-size: 1.5em; margin: 0 0 6px; color: var(--text-navy); font-weight: 800; }
+  header .sub { font-size: 0.8em; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--live-red); display: inline-block; animation: pulse 1.3s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  .search-row { margin-bottom: 12px; }
+  .search-row input {
+    width: 100%; background: var(--card-alt); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 9px 12px; font-size: 0.95em; font-family: inherit;
+  }
+
+  /* Table potentiellement large (points/joues/V-N-D/buts/diff/ligue menee) --
+     scroll horizontal dedie plutot que debordement de la page (attention
+     PC/portable deja demandee pour /poules, meme principe ici). */
+  .table-scroll { overflow-x: auto; border-radius: 10px; }
+  table.classement-table { width: 100%; border-collapse: collapse; font-size: 0.82em; white-space: nowrap; }
+  .classement-table th, .classement-table td { padding: 7px 8px; text-align: left; }
+  .classement-table th { color: var(--muted); font-weight: 600; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.3px; }
+  .classement-table td.rank { width: 2.2em; color: var(--muted); font-variant-numeric: tabular-nums; border-left: 4px solid transparent; }
+  .classement-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .classement-table td.points { font-weight: 700; color: var(--green); }
+  .classement-table tbody tr { border-top: 1px solid var(--border); }
+  .classement-table tbody tr:hover { background: var(--card-alt); }
+  .classement-table tbody tr.hidden { display: none; }
+  /* Ligne du manager qui a clique depuis SA page -- coloree en entier avec
+     SON markerColour, pas juste le liseré des autres lignes (retour
+     utilisateur 2026-08-13 : "voir toute sa ligne coloree... afin que ce
+     soit plus visible"). */
+  .classement-table tbody tr.me { font-weight: 700; }
+  .classement-table tbody tr.me td { color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.35); }
+  .classement-table tbody tr.me td.points { color: #fff; }
+  .badge-row { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px; }
+  .mini-badge {
+    font-size: 0.72em; background: var(--card-alt); border: 1px solid var(--border);
+    border-radius: 999px; padding: 1px 6px; color: var(--gold); white-space: nowrap;
+  }
+  .league-lead { font-size: 0.85em; }
+
+  .status-msg { display: block; text-align: center; color: var(--muted); font-size: 0.85em; margin-top: 20px; }
+  .status-msg.err { color: #c9484a; }
+</style>
+</head>
+<body>
+<div class="app-header">
+  <a class="app-title" href="/">MPG</a>
+  <nav>
+    <a href="/">Managers</a>
+    <a href="/poules">Poules</a>
+    <a href="/classement-ligue">Classement ligue</a>
+    <a href="/super-classement" class="active">Super classement</a>
+    <a href="/simulator">Simulateur</a>
+    <a href="/comptes">Comptes</a>
+    <a href="/config">Barèmes</a>
+    <a href="/token">Token API</a>
+  </nav>
+</div>
+<div class="wrap">
+  <a class="back-link" id="back-link" href="/">‹ Managers</a>
+  <header>
+    <h1 class="section-bar">Super classement</h1>
+    <div class="sub"><span class="live-dot"></span> <span id="updated">chargement…</span></div>
+  </header>
+
+  <div class="search-row">
+    <input type="text" id="search" placeholder="Rechercher un manager…">
+  </div>
+
+  <div id="classement"><span class="status-msg">Chargement…</span></div>
+</div>
+
+<script>
+// Nav reservee aux admins (retour utilisateur 2026-08-23 : "à garder pour
+// le ou les admins que je désigne") -- masque les 4 liens admin-only du nav
+// tant que la session n'est pas authentifiee comme un admin (cf.
+// core/auth.py::ADMIN_USER_IDS). Ne remplace PAS la protection reelle de
+// chaque page (gate propre a admin.html/comptes.html/simulator.html/
+// token.html) -- sert juste a ne pas les ANNONCER a un visiteur non-admin.
+(async function hideAdminNavIfNeeded() {
+  try {
+    const res = await fetch('/api/auth/status');
+    const status = await res.json();
+    if (!status.isAdmin) {
+      document.querySelectorAll(
+        '.app-header nav a[href="/simulator"], .app-header nav a[href="/comptes"], .app-header nav a[href="/config"], .app-header nav a[href="/token"]'
+      ).forEach(a => a.remove());
+    }
+  } catch (err) { /* pas bloquant -- nav complete par defaut si le check echoue */ }
+})();
+
+const params = new URLSearchParams(location.search);
+// userId porte depuis le lien "Super Classement (live)" de sa propre page
+// manager -- resolu en nom via /api/managers pour reperer SA ligne (retour
+// utilisateur 2026-08-13 : "le joueur qui clique depuis sa page pourrait voir
+// toute sa ligne coloree"). Simple parametre d'URL, pas de connexion requise
+// -- classement = donnee publique, pas les controles de bonus. Repli sur la
+// session connectee (retour utilisateur 2026-08-23 : "toujours pas de
+// surbrillance... pour l'utilisateur connecté") si aucun ?id= explicite --
+// avant ce correctif, arriver ici via le nav ne surlignait jamais rien,
+// meme authentifie.
+let highlightUserId = params.get('id');
+
+function bonusPillsHtml(bonusDetails) {
+  const entries = Object.entries(bonusDetails || {}).filter(([, v]) => v);
+  if (!entries.length) return '';
+  return `<div class="badge-row">${entries.map(([k, v]) => `<span class="mini-badge">${k} +${v}</span>`).join('')}</div>`;
+}
+
+function leagueLeadHtml(row) {
+  const leagues = Object.keys(row)
+    .filter(k => k.endsWith('_League_Place') && row[k] === 1)
+    .map(k => k.slice(0, -'_League_Place'.length));
+  if (!leagues.length) return '';
+  return `<span class="league-lead" title="1er de ${leagues.join(', ')}">🏆 ${leagues.join(', ')}</span>`;
+}
+
+// Total "match(s)" = formule officielle update_team_points (points_pond +
+// Pichichi + Le_Mur + Bonus_Champion + Bonus_Podium + cleanSheet + manita +
+// on_fire + Precious - grotaldo, cf. core/live_projection.py::_finalize_league_row)
+// -- calcule ici EXPLICITEMENT (pas juste "points - bonus") pour que la
+// somme affichee (Pts Match(s) + Pts Bonus) soit verifiable a l'oeil et
+// serve aussi de garde-fou si jamais elle divergeait du total officiel.
+// Retour utilisateur 2026-08-13 : "on voit Christophe_Panini a 101.7 mais
+// quand on fait le compte des bonus ça ne fait que 90" -- 90 (bonus_details)
+// + 11.7 (match points) = 101.7, confirme exact.
+function matchPointsOf(row) {
+  return (row.points_pond ?? 0) + (row.Pichichi ?? 0) + (row.Le_Mur ?? 0)
+    + (row.Bonus_Champion ?? 0) + (row.Bonus_Podium ?? 0) + (row.cleanSheet ?? 0)
+    + (row.manita ?? 0) + (row.on_fire ?? 0) + (row.Precious ?? 0) - (row.grotaldo ?? 0);
+}
+
+function bonusPointsOf(row) {
+  return Object.values(row.bonus_details || {}).reduce((sum, v) => sum + (v || 0), 0);
+}
+
+function rowHtml(row, colorByName, highlightName) {
+  const name = (row.player_name || '').toLowerCase();
+  const color = colorByName[name] || 'transparent';
+  const isMe = highlightName && name === highlightName;
+  const played = (row.victory ?? 0) + (row.draw ?? 0) + (row.defeat ?? 0);
+  const rowStyle = isMe ? ` style="background:${color}"` : '';
+  return `
+    <tr data-name="${name}" class="${isMe ? 'me' : ''}"${rowStyle}>
+      <td class="rank" style="border-left-color:${color}">#${row.rang}</td>
+      <td>
+        ${row.player_name || ''}
+        ${leagueLeadHtml(row)}
+        ${bonusPillsHtml(row.bonus_details)}
+      </td>
+      <td class="num points">${row.points ?? 0}</td>
+      <td class="num">${Math.round(matchPointsOf(row) * 100) / 100}</td>
+      <td class="num">${bonusPointsOf(row)}</td>
+      <td class="num">${played}</td>
+      <td class="num">${row.victory ?? 0}</td>
+      <td class="num">${row.draw ?? 0}</td>
+      <td class="num">${row.defeat ?? 0}</td>
+      <td class="num">${row['score+'] ?? 0}</td>
+      <td class="num">${row['score-'] ?? 0}</td>
+      <td class="num">${(row.score_diff ?? 0) > 0 ? '+' : ''}${row.score_diff ?? 0}</td>
+    </tr>`;
+}
+
+async function charger() {
+  const el = document.getElementById('classement');
+  if (!highlightUserId) {
+    try {
+      const authRes = await fetch('/api/auth/status');
+      const authStatus = await authRes.json();
+      if (authStatus.loggedInUserId) highlightUserId = authStatus.loggedInUserId;
+    } catch (err) { /* pas bloquant */ }
+  }
+  try {
+    const [classementRes, managersRes] = await Promise.all([
+      fetch('/api/super-classement'),
+      fetch('/api/managers'),
+    ]);
+    const data = await classementRes.json();
+    if (!classementRes.ok) throw new Error(data.error || classementRes.statusText);
+    const managersData = await managersRes.json();
+    // MarkerColour personnel de chaque manager (deja utilise comme accent sur
+    // sa propre page) -- affiche ici en repere visuel rapide par ligne, cf.
+    // retour utilisateur 2026-08-13.
+    const colorByName = {};
+    (managersData.managers || []).forEach(m => {
+      if (m.markerColour) colorByName[(m.realName || '').toLowerCase()] = m.markerColour;
+    });
+    let highlightName = null;
+    if (highlightUserId) {
+      const m = (managersData.managers || []).find(mm => mm.userId === highlightUserId);
+      if (m) {
+        highlightName = (m.realName || '').toLowerCase();
+        // Fil d'Ariane : retour vers SA page plutot que la racine Managers
+        // (retour utilisateur 2026-08-13).
+        const back = document.getElementById('back-link');
+        back.href = `/manager?id=${encodeURIComponent(highlightUserId)}`;
+        back.textContent = `‹ ${m.realName}`;
+      }
+    }
+
+    const rows = data.rows || [];
+    if (!rows.length) {
+      el.innerHTML = '<span class="status-msg">Aucune donnée disponible pour l\'instant.</span>';
+      return;
+    }
+    el.innerHTML = `
+      <div class="table-scroll">
+        <table class="classement-table">
+          <thead><tr>
+            <th>#</th><th>Manager</th><th>Points</th><th title="points_pond + Pichichi + Le_Mur + Bonus_Champion + Bonus_Podium + cleanSheet + manita + on_fire + Précieux − Grotaldo">Pts Match(s)</th><th title="Somme des badges bonus généraux affichés à côté du nom">Pts Bonus</th><th>Joués</th>
+            <th>V</th><th>N</th><th>D</th><th>B+</th><th>B-</th><th>Diff</th>
+          </tr></thead>
+          <tbody>${rows.map(r => rowHtml(r, colorByName, highlightName)).join('')}</tbody>
+        </table>
+      </div>`;
+    applyFilter();
+    document.getElementById('updated').textContent = `maj ${new Date().toLocaleTimeString('fr-FR')}`;
+  } catch (err) {
+    el.innerHTML = `<span class="status-msg err">Erreur : ${err.message}</span>`;
+  }
+}
+
+function applyFilter() {
+  const query = document.getElementById('search').value.trim().toLowerCase();
+  document.querySelectorAll('#classement tbody tr').forEach(tr => {
+    tr.classList.toggle('hidden', query && !tr.dataset.name.includes(query));
+  });
+}
+
+document.getElementById('search').addEventListener('input', applyFilter);
+
+charger();
+setInterval(charger, 60000);
+</script>
+</body>
+</html>
