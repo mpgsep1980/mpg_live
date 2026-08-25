@@ -1,3 +1,6 @@
+# Redeclenchement manuel 2026-08-25 : premier push tombe avant que la source
+# Pages soit basculee sur "GitHub Actions" cote Settings, deploy-pages avait
+# donc probablement echoue faute de site Pages configure a ce moment-la.
 name: Publier site/ sur GitHub Pages
 
 # Publie le dossier site/ tel quel (pas de build) -- retour utilisateur
