@@ -39,7 +39,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from flask import Flask, jsonify, request
 
-from core.api import get_division_matches, get_championship_match
+from core.api import get_division_matches, get_championship_match, get_division_info
 from core.live_scoring import (
     compute_division_live_scores, collect_real_match_ids, VALID_BONUSES, bonus_available_for_division_size,
 )
@@ -63,6 +63,32 @@ class _BadRequest(Exception):
         self.status = status
 
 
+def _ensure_user_ids(division_matches: list[dict], short_id: str, season: int, division: int) -> None:
+    """Avant le coup d'envoi de la journee (statut MPG "pas commence"),
+    get_division_matches renvoie home/away["userId"] = null -- seul teamId
+    est peuple, MPG ne verrouille l'association manager<->match qu'au coup
+    d'envoi (verifie reel : Rosbeef_League D8 J2, status=0, userId null des
+    les deux cotes de chacun des 3 matchs). Reconstitue userId depuis teamId
+    via usersTeams (core/api.py::get_division_info, disponible quel que soit
+    l'etat du match) pour que TOUT le reste (recherche du match du manager,
+    determination de l'adversaire, compute_division_live_scores) continue de
+    fonctionner sans aucun autre changement -- retour utilisateur 2026-08-25,
+    "on doit absolument la blinder avant le debut des matchs" : simulate-bonus
+    renvoyait "Match introuvable pour ce manager dans cette division" pour
+    TOUTE journee pas encore commencee, ce qui est precisement le moment ou
+    un manager veut planifier son coup. Mute `division_matches` en place ;
+    ne fait l'appel reseau supplementaire que si necessaire (journee deja en
+    cours/terminee = userId deja peuple, aucun cout ajoute)."""
+    if all(m["home"].get("userId") and m["away"].get("userId") for m in division_matches):
+        return
+    users_teams = get_division_info(short_id, season, division).get("usersTeams", {}) or {}
+    team_to_user = {team_id: user_id for user_id, team_id in users_teams.items()}
+    for m in division_matches:
+        for side in ("home", "away"):
+            if not m[side].get("userId"):
+                m[side]["userId"] = team_to_user.get(m[side].get("teamId"))
+
+
 def _load_match_context(args, require_own_bonus_valid: bool = True):
     """Commun a simulate-bonus et live-scenario-sweep : resout le match du
     manager + son adversaire + la taille de division + les vrais matchs
@@ -84,11 +110,24 @@ def _load_match_context(args, require_own_bonus_valid: bool = True):
         raise _BadRequest(f"Bonus inconnu ou pas encore supporte en live : {own_bonus}")
 
     division_matches = get_division_matches(short_id, int(season), int(division), int(game_week))
+    _ensure_user_ids(division_matches, short_id, int(season), int(division))
     div_match = next(
         (m for m in division_matches if user_id in (m["home"].get("userId"), m["away"].get("userId"))), None,
     )
     if not div_match:
         raise _BadRequest("Match introuvable pour ce manager dans cette division", 404)
+    # Compositions pas encore verrouillees par MPG (players/playersOnPitch
+    # vides tant que le coup d'envoi n'est pas proche, meme apres le
+    # repli _ensure_user_ids ci-dessus qui ne resout que teamId->userId) :
+    # echec propre plutot qu'un KeyError/500 dans collect_real_match_ids
+    # (retour utilisateur 2026-08-25, "on doit absolument la blinder avant
+    # le debut des matchs" -- verifie reel sur une journee a venir : home/
+    # away n'ont alors que teamId/composition/playersOnPitch={}).
+    if not div_match["home"].get("players") or not div_match["away"].get("players"):
+        raise _BadRequest(
+            "Compositions pas encore disponibles pour cette journee -- reessaie juste avant le coup d'envoi.",
+            409,
+        )
     opponent_user_id = (
         div_match["away"]["userId"] if div_match["home"].get("userId") == user_id else div_match["home"]["userId"]
     )
