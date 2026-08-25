@@ -213,13 +213,22 @@
 
   // Plus de bouton "Charger" (retour utilisateur 2026-08-24, "le bouton
   // Charger alourdit l'experience") -- chaque changement de selecteur
-  // recharge instantanement. populateDivisionOptions() DOIT s'executer
-  // avant load() sur le changement de ligue (fixe le select Division avant
-  // que load() ne lise sa valeur) -- deux listeners separes plutot qu'un
-  // seul, l'ordre d'enregistrement garantit l'ordre d'execution sur un
-  // meme evenement.
-  document.getElementById("leagueCode").addEventListener("change", populateDivisionOptions);
-  document.getElementById("leagueCode").addEventListener("change", load);
+  // recharge instantanement. Au changement de LIGUE, si un manager est
+  // choisi, re-resout SA division DANS CETTE ligue plutot que de retomber
+  // sur la Division 1 par defaut (retour utilisateur 2026-08-25, "si je
+  // change de competition ... il perd le manager et revient en D1
+  // automatiquement").
+  document.getElementById("leagueCode").addEventListener("change", async () => {
+    populateDivisionOptions();
+    const uid = document.getElementById("global-manager").value;
+    if (uid) {
+      const extra = await resolveManagerDivision(uid);
+      if (extra.division && extra.ligue === document.getElementById("leagueCode").value) {
+        document.getElementById("division").value = extra.division;
+      }
+    }
+    load();
+  });
   document.getElementById("division").addEventListener("change", load);
 
   // Registre managers (retour utilisateur 2026-08-24, "on voit toujours un

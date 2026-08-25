@@ -396,6 +396,13 @@ html.dark, .mpg-dark {
 .mpg-table.mpg-head-neutral thead th { background-color: var(--mpg-head-neutral-bg); color: var(--mpg-head-neutral-fg); }
 
 .mpg-table tbody tr:nth-child(even) { background-color: var(--mpg-border-soft); }
+/* Specificite (0,2,2) volontaire pour battre la regle zebree ci-dessus (meme
+   0,2,2, mais celle-ci vient apres) -- retour utilisateur 2026-08-25, "pas de
+   surbrillance ... dans Super Classement ni dans les classements de ligues" :
+   la classe s'appliquait bien, juste ecrasee visuellement une ligne sur deux
+   par le zebrage (confirme par capture Playwright -- ligne paire = #f5f6f6
+   au lieu de #cfd4f2). */
+.mpg-table tbody tr.mpg-row-selected,
 .mpg-row-selected { background-color: var(--mpg-row-selected); }
 
 /* --- Impression --- */
