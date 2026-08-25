@@ -1,0 +1,42 @@
+name: Publier site/ sur GitHub Pages
+
+# Publie le dossier site/ tel quel (pas de build) -- retour utilisateur
+# 2026-08-25, "renvoie moi le lien vers la page d'accueil" : le repo n'avait
+# jamais eu Pages active (has_pages: false cote API GitHub), tout le travail
+# de cette session n'avait ete teste qu'en local (localhost). Un workflow
+# GitHub Actions plutot qu'un reglage "branche + dossier racine" classique --
+# index.html vit dans site/, pas a la racine du repo, evite de deplacer tout
+# le contenu.
+#
+# A FAIRE UNE SEULE FOIS cote GitHub apres le premier push de ce fichier :
+# Settings > Pages > Source > "GitHub Actions" (pas "Deploy from a branch").
+
+on:
+  push:
+    branches: [master]
+    paths: ["site/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
