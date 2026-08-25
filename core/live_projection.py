@@ -244,22 +244,37 @@ def _rows_from_archive(base_by_user: dict) -> list[dict]:
             "points_pond": base.get("points_pond", 0.0),
             "_bonus_champion": base.get("bonus_champion", 0), "_bonus_podium": base.get("bonus_podium", 0),
             "_precious": base.get("precious", 0),
+            "_full_rank": base.get("rang", 0),
         })
     return rows
 
 
 def _rank_rows(rows: list[dict]) -> list[dict]:
-    """Rang + diff (3 premiers criteres MPG : points bruts, diff generale,
-    attaque) -- factorise depuis la fin de resolve_division_rows, partage
-    par les deux branches (live/archivee) ET par
-    refresh_division_classement_from_archive."""
-    ranked = sorted(
-        rows,
-        key=lambda r: (-r["points"], -(r["buts_pour"] - r["buts_contre"]), -r["buts_pour"]),
-    )
+    """Rang + diff -- departage COMPLET (les 6 criteres MPG, pas seulement
+    points/diff/attaque) des que chaque ligne porte deja un "_full_rank"
+    (pose par core.internal_bonus.compute_internal_bonuses, transporte tel
+    quel par resolve_division_rows -- branche live -- et par
+    league_classement_archive.stats["rang"] -- branche archivee, cf.
+    core/archive.py::_stats_from_row) -- retour utilisateur 2026-08-25,
+    "il semble qu'il y ait des soucis de priorisation" : le rang AFFICHE ne
+    reutilisait avant que les 3 premiers criteres, alors que le departage
+    complet (confrontation directe puis buts a l'exterieur) determinait
+    deja QUI recoit Bonus_Champion/Second/Dernier -- deux ordres
+    differents pour la meme division. Repli sur les 3 premiers criteres
+    seuls si "_full_rank" manque (archive anterieure a ce correctif, pas
+    encore reconstruite -- cf. scripts/recapture_gameweek.py)."""
+    has_full_rank = bool(rows) and all(r.get("_full_rank") for r in rows)
+    if has_full_rank:
+        ranked = sorted(rows, key=lambda r: r["_full_rank"])
+    else:
+        ranked = sorted(
+            rows,
+            key=lambda r: (-r["points"], -(r["buts_pour"] - r["buts_contre"]), -r["buts_pour"]),
+        )
     for i, row in enumerate(ranked, start=1):
         row["rang"] = i
         row["diff"] = row["buts_pour"] - row["buts_contre"]
+        row.pop("_full_rank", None)
     return ranked
 
 
@@ -282,13 +297,16 @@ def refresh_division_classement_from_archive(sb, league: dict, division: int) ->
 
 def resolve_division_rows(league: dict, division_number: int, division_matches: list[dict],
                            game_week: int, total_divisions: int, setup: dict) -> tuple[list[dict], bool]:
-    """Classement resolu d'UNE division pour ce tick -- rang (3 premiers
-    criteres MPG : points bruts, diff generale, attaque, meme sort que
-    mpg_app::compute_provisional_division_classement -- le departage complet
-    niveaux 4-6 de core.internal_bonus._rank_teams determine seulement QUI
-    recoit Bonus_Champion/Second/Dernier ci-dessous, pas l'ordre affiche,
-    comportement identique a mpg_app sur ce meme point). Renvoie (rows,
-    is_live) -- is_live=False si cette journee est deja archivee (les
+    """Classement resolu d'UNE division pour ce tick -- rang COMPLET (les 6
+    criteres MPG : points/diff/attaque puis, entre les seuls ex aequo,
+    confrontation directe et buts a l'exterieur, cf. core.internal_bonus.
+    _rank_teams -- "_full_rank" transporte jusqu'a _rank_rows, qui l'utilise
+    desormais pour le rang AFFICHE, pas seulement pour determiner qui recoit
+    Bonus_Champion/Second/Dernier -- correctif du 2026-08-25, retour
+    utilisateur "il semble qu'il y ait des soucis de priorisation", ancien
+    comportement partiel partage avec mpg_app::compute_provisional_division_
+    classement). Renvoie (rows, is_live) -- is_live=False si cette journee
+    est deja archivee (les
     bonus internes ne sont alors PAS recalcules en direct ici, mais lus
     depuis league_classement_archive, qui les stocke desormais -- cf.
     core/archive.py::archive_closed_gameweek_if_needed, retour utilisateur
@@ -344,6 +362,7 @@ def resolve_division_rows(league: dict, division_number: int, division_matches: 
                 "_bonus_champion": bonus.get("Bonus_Champion", 0),
                 "_bonus_podium": bonus.get("Bonus_Podium", 0),
                 "_precious": 0,
+                "_full_rank": row.get("_full_rank", 0),
             })
         is_live = True
 
@@ -455,7 +474,9 @@ def compute_super_classement(sb) -> list[dict]:
     Multi Boss / La Triplette / Podium / Super_Podium AJOUTES (retour
     utilisateur 2026-08-24, "vas-y" -- port de Super_Classement_General_V2.
     ipynb cellule 6, LDC exclue partout comme dans la source) : Multi Boss
-    (somme des Boss_Saison si champion d'au moins 3 ligues), La Triplette
+    (somme du bareme par division si champion d'au moins 3 ligues -- PAS la
+    valeur brute Boss_Saison, corrige le 2026-08-25 : cf. core/multi_boss.py,
+    "poules" vaut desormais 5 pts au lieu du flat legacy 2/4), La Triplette
     (+10 par tranche de 3 titres Boss_Saison dans UNE MEME ligue -- inerte
     tant qu'une seule saison est archivee par ligue, aucune donnee
     multi-saison pour l'instant, redemarrera seul une fois l'historique
@@ -489,11 +510,13 @@ def compute_super_classement(sb) -> list[dict]:
     (un manager peut avoir un nom d'equipe different par ligue, aucun nom
     "canonique" ici -- meilleur choix disponible sans registre managers)."""
     from core.general_bonus import apply_general_bonuses
+    from core.multi_boss import division_won_from_boss_saison, multi_boss_points_for
 
-    leagues_res = sb.table("leagues").select("nom,code").execute()
+    leagues_res = sb.table("leagues").select("nom,code,players_number,season_start").execute()
     ldc_code = next((r["code"] for r in (leagues_res.data or []) if r["nom"] == "Ligue_des_Champignons"), None)
+    league_meta_by_code = {r["code"]: r for r in (leagues_res.data or [])}
 
-    res = sb.table("division_classement_live").select("league_code,division,data").execute()
+    res = sb.table("division_classement_live").select("league_code,division,data,season").execute()
     rows = res.data or []
 
     SUM_FIELDS = (
@@ -553,8 +576,18 @@ def compute_super_classement(sb) -> list[dict]:
             if league_code != ldc_code:
                 boss_saison = entry.get("boss_saison") or 0
                 if boss_saison:
-                    d = boss_saison_by_user_league.setdefault(uid, {})
-                    d[league_code] = max(d.get(league_code, 0), boss_saison)
+                    # boss_saison est la valeur BRUTE legacy (flat 2/4 pts
+                    # pour une poule) -- on la reconvertit au vrai bareme par
+                    # division avant de la retenir (retour utilisateur
+                    # 2026-08-25, cf. docstring core/multi_boss.py).
+                    meta = league_meta_by_code.get(league_code) or {}
+                    players_number = meta.get("players_number")
+                    is_poule_season = row.get("season") == meta.get("season_start")
+                    division_won = division_won_from_boss_saison(players_number, is_poule_season, boss_saison)
+                    pts = multi_boss_points_for(players_number, division_won) if division_won is not None else None
+                    if pts is not None:
+                        d = boss_saison_by_user_league.setdefault(uid, {})
+                        d[league_code] = max(d.get(league_code, 0), pts)
                 rang_ligue = entry.get("rang_ligue")
                 if rang_ligue is not None:
                     d = place_by_user_league.setdefault(uid, {})

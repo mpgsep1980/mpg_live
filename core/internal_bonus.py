@@ -183,6 +183,14 @@ def compute_internal_bonuses(
         return standings
 
     ranked = _rank_teams(standings, division_matches)
+    # Rang COMPLET (les 6 criteres, pas seulement les 3 premiers) expose ici
+    # pour que le rang AFFICHE puisse le reutiliser (retour utilisateur
+    # 2026-08-25, "il semble qu'il y ait des soucis de priorisation" --
+    # jusqu'ici seul _rank_teams/ranked determinait QUI recoit Bonus_
+    # Champion/Second/Dernier, le rang affiche cote site retombait sur un
+    # tri partiel a 3 criteres, cf. core/live_projection.py::_rank_rows).
+    for i, t in enumerate(ranked, start=1):
+        t["_full_rank"] = i
     scale = (current_gameweek / last_gameweek) if last_gameweek else 0
 
     # Arrondi a 1 decimale pour les 3 bonus au PRORATA (scale) -- retour

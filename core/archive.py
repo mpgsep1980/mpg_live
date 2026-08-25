@@ -75,6 +75,14 @@ def _stats_from_row(
         "Ycards": row.get("Ycards", 0), "Rcards": row.get("Rcards", 0),
         "pichichi": bonus.get("Pichichi", 0), "mur": bonus.get("Le_Mur", 0),
         "bonus_champion": bonus.get("Bonus_Champion", 0), "bonus_podium": bonus.get("Bonus_Podium", 0),
+        # Rang COMPLET (departage a 6 criteres, cf. core/internal_bonus.py::
+        # compute_internal_bonuses -- "_full_rank") persiste ici pour que
+        # refresh_division_classement_from_archive/_rows_from_archive (qui
+        # n'ont plus acces a division_matches une fois l'archive relue)
+        # puissent quand meme afficher le bon rang, au lieu de retomber sur
+        # un tri partiel a 3 criteres (retour utilisateur 2026-08-25, "il
+        # semble qu'il y ait des soucis de priorisation").
+        "rang": row.get("_full_rank", 0),
         # Bonus_Second/Bonus_Dernier -- meme cas que Boss_Saison ci-dessous :
         # deja calcules par compute_internal_bonuses, jamais surfaces avant
         # ce correctif (retour utilisateur 2026-08-24) -- necessaires pour
