@@ -92,29 +92,68 @@ def _head_to_head_stats(user_ids: set, division_matches: list[dict]) -> dict[str
     return stats
 
 
-def _resolve_tied_group(group: list[dict], division_matches: list[dict] | None) -> list[dict]:
+def _resolve_tied_group(
+    group: list[dict], division_matches: list[dict] | None, mpg_ranks: dict[str, int] | None = None,
+) -> list[dict]:
     """Reclasse un groupe d'équipes à ÉGALITÉ PARFAITE sur points/diff/buts_pour
     (les 3 premiers niveaux du départage MPG), selon les niveaux 4-6 : confrontation
     directe (points puis diff, entre les SEULS membres du groupe), puis buts marqués
     à l'extérieur (individuel). Groupe inchangé (ordre stable, hérité du tri
-    précédent) si `division_matches` absent, ou si l'égalité persiste malgré ces 3
-    niveaux -- MPG ne précise rien au-delà (retour utilisateur 2026-08-20)."""
+    précédent) si `division_matches` absent.
+
+    Niveau 7 (retour utilisateur 2026-08-25, "si on arrive au bout des 6 critères
+    sans pouvoir départager les équipes, on se réfère à l'API MPG") : si l'égalité
+    persiste malgré les niveaux 4-6 -- vérifié réel sur Rosbeef_League D8 après J1,
+    4 équipes encore MATHÉMATIQUEMENT à égalité totale (aucune n'a affronté toutes
+    les autres) -- et qu'un `mpg_ranks` ({teamId: rang officiel MPG}, cf.
+    core/api.py::get_division_live_ranks) est fourni et couvre TOUT le sous-groupe
+    encore lié, on retombe sur l'ordre MPG lui-même plutôt que d'inventer un 7e
+    critère mathématique non vérifié. `mpg_ranks` absent, ou ne couvrant pas tout
+    le sous-groupe (ex. équipe absente de liveState.standings) : ordre stable
+    inchangé, comme avant ce correctif."""
     if len(group) < 2 or not division_matches:
         return group
     user_ids = {t["userId"] for t in group}
     h2h = _head_to_head_stats(user_ids, division_matches)
-    return sorted(
-        group,
-        key=lambda t: (
+
+    def key(t: dict) -> tuple:
+        return (
             h2h[t["userId"]]["points"],
             h2h[t["userId"]]["diff"],
             _away_goals(t["userId"], division_matches),
-        ),
-        reverse=True,
-    )
+        )
+
+    ranked = sorted(group, key=key, reverse=True)
+    if not mpg_ranks:
+        return ranked
+
+    user_id_to_team_id = {
+        m[side]["userId"]: m[side]["teamId"]
+        for m in division_matches for side in ("home", "away")
+        if m[side].get("userId") in user_ids
+    }
+    final: list[dict] = []
+    i = 0
+    while i < len(ranked):
+        j = i + 1
+        while j < len(ranked) and key(ranked[j]) == key(ranked[i]):
+            j += 1
+        subgroup = ranked[i:j]
+        if len(subgroup) > 1:
+            team_rank = {
+                t["userId"]: mpg_ranks.get(user_id_to_team_id.get(t["userId"]))
+                for t in subgroup
+            }
+            if all(v is not None for v in team_rank.values()):
+                subgroup = sorted(subgroup, key=lambda t: team_rank[t["userId"]])
+        final.extend(subgroup)
+        i = j
+    return final
 
 
-def _rank_teams(standings: list[dict], division_matches: list[dict] | None = None) -> list[dict]:
+def _rank_teams(
+    standings: list[dict], division_matches: list[dict] | None = None, mpg_ranks: dict[str, int] | None = None,
+) -> list[dict]:
     """Classement de division/poule -- règle MPG officielle (retour utilisateur
     2026-08-20, DISTINCTE du départage à 6 critères du Super Classement des 72
     managers -- cf. core/live_projection.py, qui utilise Ycards/Rcards : NE PAS
@@ -126,14 +165,18 @@ def _rank_teams(standings: list[dict], division_matches: list[dict] | None = Non
     4. points en confrontation directe  5. différence de buts particulière
     6. buts marqués à l'extérieur
 
-    7. En cas de doute persistant (résultat qui surprend, ou vérification d'un
-    signalement utilisateur comme celui du 2026-08-25 sur Rosbeef_League D8) :
-    aller confronter le résultat à l'API MPG officielle elle-même --
-    https://api.mpg.football/division/{shortId}_{season}_{division}, champ
-    `liveState.standings[team_id].rank` -- avant de conclure à un bug de LOGIQUE
-    ici. C'est cette vérification qui a confirmé que les niveaux 1-6 étaient
-    corrects et que le vrai bug était ailleurs (rang AFFICHÉ recalculé par un
-    tri séparé et incomplet, cf. core/live_projection.py::_rank_rows).
+    7. Si `mpg_ranks` est fourni ET que l'égalité persiste malgré les niveaux
+    4-6 (cas réel vérifié sur Rosbeef_League D8, 2026-08-25 -- égalité
+    mathématique totale, cf. _resolve_tied_group) : ordre de l'API MPG
+    officielle elle-même (`get_division_live_ranks`, liveState.standings)
+    plutôt qu'un 7e critère mathématique inventé/non vérifié. `mpg_ranks`
+    absent (repli/rebuild historique, cf. core/archive.py) : égalité non
+    résolue, ordre stable comme avant ce correctif -- toujours utile en
+    diagnostic manuel pour confirmer que 1-6 sont corrects avant de suspecter
+    un bug de logique ici (c'est cette vérification qui a d'abord confirmé,
+    le 2026-08-25, que le vrai bug de "Cool Rasta" 2026-08-25 était ailleurs :
+    rang AFFICHÉ recalculé par un tri séparé et incomplet, cf.
+    core/live_projection.py::_rank_rows).
 
     Avant ce correctif, le tri s'arrêtait à un 4e critère redondant (buts contre --
     mathématiquement déjà fixé dès que diff ET buts pour sont égaux, donc ne
@@ -158,7 +201,7 @@ def _rank_teams(standings: list[dict], division_matches: list[dict] | None = Non
             if key_j != key_i:
                 break
             j += 1
-        result.extend(_resolve_tied_group(primary_sorted[i:j], division_matches))
+        result.extend(_resolve_tied_group(primary_sorted[i:j], division_matches, mpg_ranks))
         i = j
     return result
 
@@ -174,6 +217,7 @@ def compute_internal_bonuses(
     league_name: str,
     config: dict | None = None,
     division_matches: list[dict] | None = None,
+    mpg_ranks: dict[str, int] | None = None,
 ) -> list[dict]:
     """Mute et retourne `standings` — ajoute standings[i]["bonus_details"][...]
     pour chaque bonus interne activé. `standings` doit couvrir une seule division
@@ -181,7 +225,10 @@ def compute_internal_bonuses(
     `division_matches` : TOUS les matchs bruts ayant produit `standings` (toutes
     journées confondues) -- transmis tel quel à _rank_teams pour les niveaux 4-6
     du départage MPG (confrontation directe, buts à l'extérieur). Absent = repli
-    documenté sur les 3 premiers niveaux seulement, cf. _rank_teams."""
+    documenté sur les 3 premiers niveaux seulement, cf. _rank_teams. `mpg_ranks` :
+    7e niveau optionnel, cf. _resolve_tied_group -- à ne fournir que lorsque
+    `standings` reflète bien la journée COURANTE/tout juste close (jamais lors
+    d'un rebuild d'une journée archivée plus ancienne, cf. core/archive.py)."""
     cfg = config or DEFAULT_INTERNAL_BONUS_CONFIG
     enabled = cfg.get("enabled", {})
 
@@ -191,7 +238,7 @@ def compute_internal_bonuses(
     if not standings:
         return standings
 
-    ranked = _rank_teams(standings, division_matches)
+    ranked = _rank_teams(standings, division_matches, mpg_ranks)
     # Rang COMPLET (les 6 criteres, pas seulement les 3 premiers) expose ici
     # pour que le rang AFFICHE puisse le reutiliser (retour utilisateur
     # 2026-08-25, "il semble qu'il y ait des soucis de priorisation" --

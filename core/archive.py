@@ -30,6 +30,7 @@ archivees par-dessus.
 """
 from datetime import datetime, timezone
 
+from core.api import get_division_live_ranks
 from core.archive_capture import capture_division_journee, dtc_counts_from_matches, RAW_BONUS_TO_DTC_KEY
 from core.live_scoring import all_division_matches_final
 from core.internal_bonus import compute_internal_bonuses
@@ -38,6 +39,19 @@ from core.live_projection import (
 )
 
 DTC_KEYS = tuple(RAW_BONUS_TO_DTC_KEY.values())
+
+
+def _safe_mpg_ranks(short_id: str, season: int, division: int) -> dict[str, int] | None:
+    """Repli best-effort pour le 7e niveau de departage (retour utilisateur
+    2026-08-25, cf. core/internal_bonus.py::_resolve_tied_group) -- ne doit
+    JAMAIS faire echouer l'archivage si l'API MPG est indisponible ou renvoie
+    une forme inattendue : simplement pas de 7e niveau ce coup-ci (egalite
+    non resolue, comme avant ce correctif)."""
+    try:
+        return get_division_live_ranks(short_id, season, division)
+    except Exception as e:
+        print(f"    (rang MPG officiel indisponible pour le departage, division {division} : {e})")
+        return None
 
 
 def _stats_from_row(
@@ -171,10 +185,14 @@ def archive_closed_gameweek_if_needed(sb, league: dict, closed_game_week: int, t
 
         delta_rows = division_delta(division_matches, division, closed_game_week, league, total_divisions)
         combined = combined_division_standings(base_by_user, delta_rows)
+        # mpg_ranks : la journee qu'on cloture ici est TOUJOURS la plus recente
+        # connue (rien apres), donc le classement COURANT de MPG est valable
+        # comme 7e niveau de departage (cf. _safe_mpg_ranks).
         compute_internal_bonuses(
             combined, division, closed_game_week, setup["last_gameweek"],
             setup["league_size"], setup["season_number"], setup["season_start"], league["nom"],
             setup["internal_cfg"], division_matches=division_matches,
+            mpg_ranks=_safe_mpg_ranks(short_id, season, division),
         )
         dtc_by_user = dtc_counts_from_matches(division_matches)
 
@@ -230,14 +248,21 @@ def rebuild_division_archive(sb, league: dict, division: int, total_divisions: i
     # live (league_setup lit toujours "aujourd'hui", pas une journee passee).
     setup = league_setup(sb, league, [division], final_snapshots[-1][0])
 
+    last_known_game_week = final_snapshots[-1][0]
     base_by_user: dict[str, dict] = {}
     for game_week, division_matches, precious_holder_user_id in final_snapshots:
         delta_rows = division_delta(division_matches, division, game_week, league, total_divisions)
         combined_rows = combined_division_standings(base_by_user, delta_rows)
+        # mpg_ranks : le classement COURANT de MPG (7e niveau de departage,
+        # cf. _safe_mpg_ranks) ne reflete que l'etat present -- ne l'utiliser
+        # que pour rejouer la journee la PLUS RECENTE connue, jamais pour une
+        # journee plus ancienne (une egalite non resolue y reste non resolue).
+        mpg_ranks = _safe_mpg_ranks(short_id, season, division) if game_week == last_known_game_week else None
         compute_internal_bonuses(
             combined_rows, division, game_week, setup["last_gameweek"],
             setup["league_size"], setup["season_number"], setup["season_start"], league["nom"],
             setup["internal_cfg"], division_matches=division_matches,
+            mpg_ranks=mpg_ranks,
         )
         dtc_by_user = dtc_counts_from_matches(division_matches)
         base_by_user = {
