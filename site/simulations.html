@@ -3,13 +3,29 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MPG Live -- Match</title>
+<title>MPG Live -- Mes simulations</title>
 <link rel="stylesheet" href="mpg-tokens.css">
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: var(--mpg-title); }
   h1 { font-size: 1.4rem; margin: 0 0 0.25rem; }
   .meta { color: var(--mpg-text-soft); font-size: 0.85rem; }
-  .back-link { font-size: 0.85rem; }
+
+  /* --- Expanders (une division en direct = un <details>) --- */
+  .match-expander {
+    border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); margin: 0.75rem 0; overflow: hidden;
+  }
+  .match-expander summary {
+    display: flex; align-items: center; gap: 0.6rem; padding: 0.85rem 1.1rem; cursor: pointer;
+    list-style: none; font-size: 0.95rem;
+  }
+  .match-expander summary::-webkit-details-marker { display: none; }
+  .match-expander summary::before { content: "▸"; color: var(--mpg-text-off); transition: transform 150ms ease; }
+  .match-expander[open] summary::before { transform: rotate(90deg); }
+  .summary-dot { width: 0.6rem; height: 0.6rem; border-radius: 999px; flex-shrink: 0; }
+  .summary-league { font-weight: 700; }
+  .summary-division { color: var(--mpg-text-soft); font-size: 0.85rem; }
+  .summary-score { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .expander-body { padding: 0 1.1rem 1.1rem; border-top: 0.5px solid var(--mpg-border-soft); }
 
   /* --- En-tete du match --- */
   .match-header {
@@ -34,7 +50,7 @@
   .goal-group { font-size: 0.85rem; margin: 0.25rem 0; }
   .goal-group .none { color: var(--mpg-text-soft); font-size: 0.8rem; }
 
-  /* --- Simulateur (port de division.html) --- */
+  /* --- Simulateur --- */
   .sim-card { border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); padding: 1rem 1.25rem; margin: 1rem 0; }
   .sim-card h2 { margin: 0 0 0.25rem; font-size: 1rem; }
   .sim-card .meta { margin: 0 0 0.75rem; }
@@ -85,12 +101,11 @@
   }
 </script>
 
-<p class="back-link mpg-no-print" id="back-link"></p>
+<h1>Mes simulations</h1>
+<div class="meta">Toutes tes divisions dont la journée est en cours, en une seule fois -- teste tes coups partout pour anticiper ton classement de ligue et le Super Classement.</div>
 
 <div id="status" class="status-msg">Chargement...</div>
-<div id="match-header"></div>
-<div class="lineups" id="lineups"></div>
-<div id="simulator"></div>
+<div id="list"></div>
 
 <script type="module">
   import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -100,13 +115,16 @@
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   const params = new URLSearchParams(location.search);
 
-  // Selecteur de manager global (bandeau, cf. mpg-tokens.css) -- retour
-  // utilisateur 2026-08-25, "le choix du manager ... devrait rester fixe sur
-  // toutes les pages". PAS branche sur ?user= ici, contrairement aux autres
-  // pages -- sur match.html ce parametre designe l'ancre du match affiche
-  // (un des deux managers du match, cf. plus bas), pas "qui consulte le
-  // site". Persiste juste en localStorage pour rester coherent en
-  // naviguant vers une autre page, sans jamais toucher a l'URL courante.
+  // Retour utilisateur 2026-08-25 : "il faudrait que toutes les divisions en
+  // cours soient disponibles, quitte a mettre des expanders ... pouvoir
+  // faire toutes les simulations pour tester a quelle place on serait
+  // potentiellement au classement de sa ligue, au general". Cette premiere
+  // version agrege le simulateur EXISTANT (score/delta par match, cf.
+  // match.html) sur TOUTES les divisions en direct du manager choisi --
+  // PAS encore le rang de ligue/Super Classement simule (recalculer le
+  // classement complet d'une division -- Pichichi/Mur/Boss dependent de
+  // TOUS les matchs, pas juste le mien -- est un chantier plus gros, laisse
+  // pour une prochaine etape, cf. discussion 2026-08-25).
   const STORAGE_KEY = "mpg_live_user_id";
 
   async function initGlobalManagerSelector() {
@@ -114,28 +132,40 @@
     const select = document.getElementById("global-manager");
     select.innerHTML = `<option value="">— Manager —</option>`
       + (data || []).map(m => `<option value="${m.user_id}">${m.real_name}</option>`).join("");
-    const wanted = localStorage.getItem(STORAGE_KEY) || "";
+    const wanted = params.get("user") || localStorage.getItem(STORAGE_KEY) || "";
     if (wanted) select.value = wanted;
     select.addEventListener("change", () => {
       const uid = select.value;
       if (uid) localStorage.setItem(STORAGE_KEY, uid); else localStorage.removeItem(STORAGE_KEY);
+      const url = new URL(location.href);
+      if (uid) url.searchParams.set("user", uid); else url.searchParams.delete("user");
+      location.href = url.toString();
     });
+    return wanted;
   }
 
-  // Retour utilisateur 2026-08-24 : "je dois pouvoir avoir acces aux
-  // matchs + la possibilite des bonus, les buts MPG etc" -- detail de
-  // match cliquable depuis "Resultats de la journee" (division.html).
-  // Reutilise TEL QUEL le simulateur de division.html (deja generique par
-  // userId cote simulate_api/app.py, pas de nouveau backend necessaire) --
-  // seul "userId" (l'ancre passee en param) change de sens : ici n'importe
-  // quel des deux managers du match, pas forcement "moi".
-  const leagueCode = params.get("ligue");
-  const division = Number(params.get("division"));
-  const gameWeek = Number(params.get("gameweek"));
-  const anchorUserId = params.get("user");
-
-  document.getElementById("back-link").innerHTML =
-    `<a href="division.html?ligue=${leagueCode}&division=${division}">&larr; Retour au classement de division</a>`;
+  // Meme mapping que index.html/division.html/ligue.html.
+  const LEAGUE_THEME_BY_NOM = {
+    "ligue_camembert": "l1",
+    "rosbeef_league": "pl",
+    "liga_tapas": "liga",
+    "lega_calzone": "seriea",
+    "ligue_2_ekt": "l2",
+    "ligue_des_champignons": "ldc",
+  };
+  const THEME_BAR = {
+    l1: "var(--mpg-league-l1)", pl: "var(--mpg-league-pl)", liga: "var(--mpg-league-liga)",
+    seriea: "var(--mpg-league-seriea)", l2: "var(--mpg-league-l2)", ldc: "var(--mpg-league-ldc)",
+    neutral: "var(--mpg-text-off)",
+  };
+  const THEME_TEXT = {
+    l1: "var(--mpg-league-l1)", pl: "var(--mpg-league-pl)", liga: "var(--mpg-league-liga)",
+    seriea: "var(--mpg-league-seriea-text)", l2: "var(--mpg-league-l2-text)", ldc: "var(--mpg-league-ldc)",
+    neutral: "var(--mpg-text-soft)",
+  };
+  function leagueTheme(nom) {
+    return LEAGUE_THEME_BY_NOM[(nom || "").toLowerCase()] || "neutral";
+  }
 
   const SIMULATE_API_BASE = "https://mpg-live.onrender.com";
 
@@ -165,6 +195,10 @@
   function targetOptionsHtml(list, selectedId) {
     return list.map(p => `<option value="${p.id}"${p.id === selectedId ? " selected" : ""}>${p.name}</option>`).join("");
   }
+  // "sim-target-player" est une CLASSE ici, pas un id -- plusieurs blocs
+  // (un par division en direct) coexistent sur la meme page, cf.
+  // createBlockController ci-dessous qui scope toutes ses recherches DOM
+  // via root.querySelector(".xxx") plutot que document.getElementById.
   function targetSelectHtml(myTeam, selectedId, hidden) {
     const players = Object.entries(myTeam.players || {})
       .filter(([, p]) => p.position !== 1)
@@ -175,7 +209,7 @@
     const outGroup = outPlayers.length
       ? `<optgroup label="Déjà remplacés (vrai match pas encore joué)">${targetOptionsHtml(outPlayers, selectedId)}</optgroup>`
       : "";
-    return `<select id="sim-target-player" style="${hidden ? "display:none" : ""}"><option value="">— choisir le titu —</option>${targetOptionsHtml(players, selectedId)}${outGroup}</select>`;
+    return `<select class="sim-target-player" style="${hidden ? "display:none" : ""}"><option value="">— choisir le titu —</option>${targetOptionsHtml(players, selectedId)}${outGroup}</select>`;
   }
 
   function fmt(n) {
@@ -207,9 +241,6 @@
       </div>`;
   }
 
-  // Feuille de but -- reel (avec minute), MPG (duel de lignes, pas de
-  // minute), CSC reel et CSC Rotaldo (cf. core/live_scoring.py::
-  // apply_line_battles, goal_events).
   function goalGroupHtml(team) {
     const events = team.goal_events || [];
     const real = events.filter(e => e.type === "real" || e.type === "real_og");
@@ -250,8 +281,6 @@
       </div>`;
   }
 
-  // --- Simulateur de bonus (port verbatim de division.html, generalise a
-  // n'importe quel des deux managers du match via "perspective") ---
   function simResultHtml(match, myUserId) {
     const meIsHome = match.home.userId === myUserId;
     const me = meIsHome ? match.home : match.away;
@@ -332,195 +361,206 @@
       <p class="meta">Δ = évolution de la différence de buts en ma faveur si l'adversaire joue ce bonus (négatif = mauvais pour moi).</p>`;
   }
 
-  let lastBaselineMatch = null;
-  let leaguesByCode = {};
+  function expanderShellHtml(row, league, theme) {
+    const name = league ? league.nom.replace(/_/g, " ") : row.league_code;
+    return `
+      <details class="match-expander" open>
+        <summary>
+          <span class="summary-dot" style="background:${THEME_BAR[theme]}"></span>
+          <span class="summary-league" style="color:${THEME_TEXT[theme]}">${name}</span>
+          <span class="summary-division">Division ${row.division} · Journée ${row.game_week}</span>
+          <span class="summary-score">Chargement...</span>
+        </summary>
+        <div class="expander-body">
+          <div class="match-header"></div>
+          <div class="lineups"></div>
+          <div class="sim-card">
+            <h2>Simulateur de bonus</h2>
+            <p class="meta">Teste "et si je joue tel coup", et l'état des lieux de tous les coups adverses possibles, sans rien changer sur MPG.</p>
+            <div class="sim-row">
+              <label>Mon coup<select class="sim-own-bonus"></select></label>
+              <span class="sim-target-wrap"></span>
+              <button class="sim-run-btn">Simuler</button>
+            </div>
+            <div class="sim-status status-msg">Chargement des compositions...</div>
+            <div class="sim-result"></div>
+            <div class="sweep-panel"></div>
+          </div>
+        </div>
+      </details>`;
+  }
 
-  async function runSweep(userId, ownBonus, targetPlayerId, isHome) {
-    const sweepEl = document.getElementById("sweep-panel");
-    sweepEl.innerHTML = `<p class="meta">Bonus adverse -- état des lieux : analyse en cours...</p>`;
-    try {
-      const url = new URL(`${SIMULATE_API_BASE}/live-scenario-sweep`);
-      url.searchParams.set("shortId", leagueCode);
-      url.searchParams.set("season", leaguesByCode[leagueCode].season_search);
-      url.searchParams.set("division", division);
-      url.searchParams.set("gameweek", gameWeek);
-      url.searchParams.set("userId", userId);
-      if (ownBonus) url.searchParams.set("ownBonus", ownBonus);
-      if (targetPlayerId) url.searchParams.set("targetPlayerId", targetPlayerId);
+  // Un controleur par bloc -- son propre "lastBaselineMatch", jamais
+  // partage entre blocs (contrairement a match.html, singleton par page).
+  // Toutes les recherches DOM sont scopees a `root` (root.querySelector),
+  // jamais document.getElementById -- plusieurs blocs coexistent.
+  async function createBlockController(root, ctx) {
+    let lastBaselineMatch = null;
 
-      const res = await fetch(url);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || res.statusText);
-      sweepEl.innerHTML = `<h3 style="font-size:0.9rem;">Bonus adverse -- état des lieux</h3>` + sweepTableHtml(data, isHome);
-    } catch (e) {
-      sweepEl.innerHTML = `<p class="status-msg err">Bonus adverse indisponible (${e.message}).</p>`;
+    async function runSweep(ownBonus, targetPlayerId, isHome) {
+      const sweepEl = root.querySelector(".sweep-panel");
+      sweepEl.innerHTML = `<p class="meta">Bonus adverse -- état des lieux : analyse en cours...</p>`;
+      try {
+        const url = new URL(`${SIMULATE_API_BASE}/live-scenario-sweep`);
+        url.searchParams.set("shortId", ctx.leagueCode);
+        url.searchParams.set("season", ctx.season);
+        url.searchParams.set("division", ctx.division);
+        url.searchParams.set("gameweek", ctx.gameWeek);
+        url.searchParams.set("userId", ctx.userId);
+        if (ownBonus) url.searchParams.set("ownBonus", ownBonus);
+        if (targetPlayerId) url.searchParams.set("targetPlayerId", targetPlayerId);
+        const res = await fetch(url);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || res.statusText);
+        sweepEl.innerHTML = `<h3 style="font-size:0.9rem;">Bonus adverse -- état des lieux</h3>` + sweepTableHtml(data, isHome);
+      } catch (e) {
+        sweepEl.innerHTML = `<p class="status-msg err">Bonus adverse indisponible (${e.message}).</p>`;
+      }
     }
-  }
 
-  function updateTargetVisibility(myUserId) {
-    const ownBonus = document.getElementById("sim-own-bonus").value;
-    const wrap = document.getElementById("sim-target-wrap");
-    if (!lastBaselineMatch) { wrap.innerHTML = ""; return; }
-    const meIsHome = lastBaselineMatch.home.userId === myUserId;
-    const myTeam = meIsHome ? lastBaselineMatch.home : lastBaselineMatch.away;
-    const hidden = !BONUS_NEEDS_TARGET.has(ownBonus);
-    wrap.innerHTML = `<label>Cible (McDo+)${targetSelectHtml(myTeam, "", hidden)}</label>`;
-  }
+    function updateTargetVisibility() {
+      const ownBonus = root.querySelector(".sim-own-bonus").value;
+      const wrap = root.querySelector(".sim-target-wrap");
+      if (!lastBaselineMatch) { wrap.innerHTML = ""; return; }
+      const meIsHome = lastBaselineMatch.home.userId === ctx.userId;
+      const myTeam = meIsHome ? lastBaselineMatch.home : lastBaselineMatch.away;
+      const hidden = !BONUS_NEEDS_TARGET.has(ownBonus);
+      wrap.innerHTML = `<label>Cible (McDo+)${targetSelectHtml(myTeam, "", hidden)}</label>`;
+    }
 
-  async function initSimulator(userId, divisionSize) {
-    const statusEl = document.getElementById("sim-status");
-    const ownSelect = document.getElementById("sim-own-bonus");
-    ownSelect.innerHTML = optionsHtml(bonusOptionsForDivisionSize(divisionSize), "");
-    ownSelect.addEventListener("change", () => updateTargetVisibility(userId));
+    async function simulate() {
+      const statusEl = root.querySelector(".sim-status");
+      const resultEl = root.querySelector(".sim-result");
+      const ownBonus = root.querySelector(".sim-own-bonus").value;
+      const targetSelect = root.querySelector(".sim-target-player");
+      const targetPlayerId = targetSelect ? targetSelect.value : "";
+
+      statusEl.textContent = "Simulation en cours...";
+      statusEl.className = "status-msg";
+      resultEl.innerHTML = "";
+
+      try {
+        const url = new URL(`${SIMULATE_API_BASE}/simulate-bonus`);
+        url.searchParams.set("shortId", ctx.leagueCode);
+        url.searchParams.set("season", ctx.season);
+        url.searchParams.set("division", ctx.division);
+        url.searchParams.set("gameweek", ctx.gameWeek);
+        url.searchParams.set("userId", ctx.userId);
+        if (ownBonus) url.searchParams.set("ownBonus", ownBonus);
+        if (targetPlayerId) url.searchParams.set("targetPlayerId", targetPlayerId);
+        const res = await fetch(url);
+        const data = await res.json();
+        if (!res.ok) {
+          statusEl.textContent = "Erreur : " + (data.error || res.statusText);
+          statusEl.className = "status-msg err";
+          return;
+        }
+        statusEl.textContent = "";
+        lastBaselineMatch = data;
+        resultEl.innerHTML = simResultHtml(data, ctx.userId);
+        const meIsHome = data.home.userId === ctx.userId;
+        runSweep(ownBonus, targetPlayerId, meIsHome);
+      } catch (e) {
+        statusEl.textContent = "Simulation indisponible pour le moment (" + e.message + ").";
+        statusEl.className = "status-msg err";
+      }
+    }
+
+    root.querySelector(".sim-run-btn").addEventListener("click", simulate);
+
+    const statusEl = root.querySelector(".sim-status");
+    const ownSelect = root.querySelector(".sim-own-bonus");
+    ownSelect.innerHTML = optionsHtml(bonusOptionsForDivisionSize(ctx.divisionSize), "");
+    ownSelect.addEventListener("change", updateTargetVisibility);
 
     try {
       const url = new URL(`${SIMULATE_API_BASE}/simulate-bonus`);
-      url.searchParams.set("shortId", leagueCode);
-      url.searchParams.set("season", leaguesByCode[leagueCode].season_search);
-      url.searchParams.set("division", division);
-      url.searchParams.set("gameweek", gameWeek);
-      url.searchParams.set("userId", userId);
+      url.searchParams.set("shortId", ctx.leagueCode);
+      url.searchParams.set("season", ctx.season);
+      url.searchParams.set("division", ctx.division);
+      url.searchParams.set("gameweek", ctx.gameWeek);
+      url.searchParams.set("userId", ctx.userId);
       const res = await fetch(url);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || res.statusText);
       lastBaselineMatch = data;
+
+      const homeName = ctx.nameFor(data.home.userId);
+      const awayName = ctx.nameFor(data.away.userId);
+      root.querySelector(".match-header").innerHTML = matchHeaderHtml(data, homeName, awayName, ctx.gameWeek);
+      root.querySelector(".lineups").innerHTML = teamColumnHtml(data.home, homeName) + teamColumnHtml(data.away, awayName);
+      const opponentName = data.home.userId === ctx.userId ? awayName : homeName;
+      root.querySelector(".summary-score").textContent = `vs ${opponentName} · ${fmt(data.home.score)} – ${fmt(data.away.score)}`;
+
       statusEl.textContent = "";
-      updateTargetVisibility(userId);
-      const meIsHome = data.home.userId === userId;
-      document.getElementById("sweep-panel").innerHTML = "";
-      runSweep(userId, "", "", meIsHome);
+      updateTargetVisibility();
+      const meIsHome = data.home.userId === ctx.userId;
+      root.querySelector(".sweep-panel").innerHTML = "";
+      await runSweep("", "", meIsHome);
     } catch (e) {
       statusEl.textContent = "Simulateur indisponible pour le moment (" + e.message + "). Le service met parfois jusqu'à 30s à se réveiller.";
       statusEl.className = "status-msg err";
+      root.querySelector(".summary-score").textContent = "indisponible";
     }
-  }
-
-  async function simulateBonus(userId) {
-    const statusEl = document.getElementById("sim-status");
-    const resultEl = document.getElementById("sim-result");
-    const ownBonus = document.getElementById("sim-own-bonus").value;
-    const targetSelect = document.getElementById("sim-target-player");
-    const targetPlayerId = targetSelect ? targetSelect.value : "";
-
-    statusEl.textContent = "Simulation en cours...";
-    statusEl.className = "status-msg";
-    resultEl.innerHTML = "";
-
-    try {
-      const url = new URL(`${SIMULATE_API_BASE}/simulate-bonus`);
-      url.searchParams.set("shortId", leagueCode);
-      url.searchParams.set("season", leaguesByCode[leagueCode].season_search);
-      url.searchParams.set("division", division);
-      url.searchParams.set("gameweek", gameWeek);
-      url.searchParams.set("userId", userId);
-      if (ownBonus) url.searchParams.set("ownBonus", ownBonus);
-      if (targetPlayerId) url.searchParams.set("targetPlayerId", targetPlayerId);
-
-      const res = await fetch(url);
-      const data = await res.json();
-      if (!res.ok) {
-        statusEl.textContent = "Erreur : " + (data.error || res.statusText);
-        statusEl.className = "status-msg err";
-        return;
-      }
-      statusEl.textContent = "";
-      lastBaselineMatch = data;
-      resultEl.innerHTML = simResultHtml(data, userId);
-      const meIsHome = data.home.userId === userId;
-      runSweep(userId, ownBonus, targetPlayerId, meIsHome);
-    } catch (e) {
-      statusEl.textContent = "Simulation indisponible pour le moment (" + e.message + ").";
-      statusEl.className = "status-msg err";
-    }
-  }
-
-  function simulatorHtml(homeUserId, awayUserId, homeName, awayName, currentUserId) {
-    return `
-      <div class="sim-card">
-        <h2>Simulateur de bonus</h2>
-        <p class="meta">Journée ${gameWeek} -- teste "et si je joue tel coup", et l'état des lieux
-        de tous les coups adverses possibles, sans rien changer sur MPG.</p>
-        <div class="sim-row">
-          <label>Simuler pour<select id="sim-perspective">
-            <option value="${homeUserId}"${currentUserId === homeUserId ? " selected" : ""}>${homeName}</option>
-            <option value="${awayUserId}"${currentUserId === awayUserId ? " selected" : ""}>${awayName}</option>
-          </select></label>
-          <label>Son coup<select id="sim-own-bonus">${optionsHtml(BONUS_OPTIONS, "")}</select></label>
-          <span id="sim-target-wrap"></span>
-          <button id="sim-run-btn">Simuler</button>
-        </div>
-        <div id="sim-status" class="status-msg">Chargement des compositions...</div>
-        <div id="sim-result"></div>
-        <div id="sweep-panel"></div>
-      </div>`;
-  }
-
-  function wireSimulator(homeUserId, awayUserId, homeName, awayName, divisionSize, currentUserId) {
-    document.getElementById("simulator").innerHTML =
-      simulatorHtml(homeUserId, awayUserId, homeName, awayName, currentUserId);
-    document.getElementById("sim-run-btn").addEventListener("click", () => {
-      simulateBonus(document.getElementById("sim-perspective").value);
-    });
-    document.getElementById("sim-perspective").addEventListener("change", (e) => {
-      wireSimulator(homeUserId, awayUserId, homeName, awayName, divisionSize, e.target.value);
-    });
-    initSimulator(currentUserId, divisionSize);
   }
 
   async function load() {
+    const userId = document.getElementById("global-manager").value;
     const statusEl = document.getElementById("status");
-    if (!leagueCode || !division || !gameWeek || !anchorUserId) {
-      statusEl.textContent = "Lien de match invalide (paramètres manquants).";
-      statusEl.className = "status-msg err";
+    const listEl = document.getElementById("list");
+    listEl.innerHTML = "";
+
+    if (!userId) {
+      statusEl.textContent = "Choisis un manager ci-dessus pour voir ses simulations en direct.";
+      statusEl.className = "status-msg";
       return;
     }
 
-    const [{ data: leaguesData }, { data: divData }, { data: managersData }] = await Promise.all([
-      supabase.from("leagues").select("code, nom, season_search, players_per_division").eq("code", leagueCode),
-      supabase.from("division_classement_live").select("data").eq("league_code", leagueCode).eq("division", division).limit(1),
+    statusEl.textContent = "Chargement...";
+    statusEl.className = "status-msg";
+
+    const [{ data: divData, error }, { data: leaguesData }, { data: managersData }] = await Promise.all([
+      supabase.from("division_classement_live").select("*").eq("is_live", true),
+      supabase.from("leagues").select("code, nom, season_search, players_per_division"),
       supabase.from("managers").select("user_id, real_name"),
     ]);
 
-    leaguesByCode = Object.fromEntries((leaguesData || []).map(l => [l.code, l]));
-    const league = leaguesByCode[leagueCode];
-    if (!league) {
-      statusEl.textContent = "Ligue introuvable.";
+    if (error) {
+      statusEl.textContent = "Erreur : " + error.message;
       statusEl.className = "status-msg err";
       return;
     }
 
+    const leaguesByCode = Object.fromEntries((leaguesData || []).map(l => [l.code, l]));
     const realNameByUid = Object.fromEntries((managersData || []).map(m => [m.user_id, m.real_name]));
-    const entries = (divData && divData[0] && divData[0].data) || [];
-    const teamNameByUserId = Object.fromEntries(entries.map(e => [e.userId, e.teamName]));
-    const nameFor = uid => realNameByUid[uid] || teamNameByUserId[uid] || uid;
+    const nameFor = uid => realNameByUid[uid] || uid;
 
-    try {
-      const url = new URL(`${SIMULATE_API_BASE}/simulate-bonus`);
-      url.searchParams.set("shortId", leagueCode);
-      url.searchParams.set("season", league.season_search);
-      url.searchParams.set("division", division);
-      url.searchParams.set("gameweek", gameWeek);
-      url.searchParams.set("userId", anchorUserId);
-      const res = await fetch(url);
-      const match = await res.json();
-      if (!res.ok) throw new Error(match.error || res.statusText);
+    const myLiveRows = (divData || []).filter(row => (row.data || []).some(e => e.userId === userId));
 
-      statusEl.textContent = "";
-      const homeName = nameFor(match.home.userId);
-      const awayName = nameFor(match.away.userId);
-
-      document.getElementById("match-header").innerHTML = matchHeaderHtml(match, homeName, awayName, gameWeek);
-      document.getElementById("lineups").innerHTML =
-        teamColumnHtml(match.home, homeName) + teamColumnHtml(match.away, awayName);
-
-      wireSimulator(match.home.userId, match.away.userId, homeName, awayName, league.players_per_division, anchorUserId);
-    } catch (e) {
-      statusEl.textContent = "Match indisponible pour le moment (" + e.message + "). Le service met parfois jusqu'à 30s à se réveiller si inactif -- réessaie dans quelques secondes.";
-      statusEl.className = "status-msg err";
+    if (!myLiveRows.length) {
+      statusEl.textContent = "Aucune division en direct pour ce manager en ce moment (aucune journée en cours).";
+      return;
     }
+
+    statusEl.textContent = "";
+    listEl.innerHTML = myLiveRows.map(row => {
+      const league = leaguesByCode[row.league_code];
+      const theme = leagueTheme(league && league.nom);
+      return expanderShellHtml(row, league, theme);
+    }).join("");
+
+    const blocks = listEl.querySelectorAll(".match-expander");
+    await Promise.all(myLiveRows.map((row, i) => {
+      const league = leaguesByCode[row.league_code];
+      const ctx = {
+        leagueCode: row.league_code, season: league.season_search, division: row.division,
+        gameWeek: row.game_week, userId, divisionSize: league.players_per_division, nameFor,
+      };
+      return createBlockController(blocks[i], ctx);
+    }));
   }
 
-  initGlobalManagerSelector();
+  await initGlobalManagerSelector();
   load();
 </script>
 
