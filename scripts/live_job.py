@@ -263,27 +263,44 @@ def main() -> None:
             game_week = next_gw["gameWeekNumber"]
 
             if not (window_start <= now <= window_end):
-                # Rattrapage : une ligue qui a RATE TOUTE la fenetre live de la
-                # journee precedente (cron en panne, ligue ajoutee en retard --
-                # meme incident deja documente dans scripts/backfill_gameweek.py,
-                # 2026-08-23 sur Ligue_2_EKT) n'a jamais de ligne dans
-                # gameweek_state pour cette journee -- la branche d'archivage
-                # normale (ligne 222 ci-dessus, gatee sur prev_state_res.data)
-                # ne se declenche donc JAMAIS pour elle, meme une fois MPG
-                # stabilise. Tente ici l'archivage direct de J(game_week-1),
-                # idempotent (archive_closed_gameweek_if_needed se sait deja
-                # sans effet si deja fait ou si MPG n'a pas encore stabilise) --
-                # retour utilisateur 2026-08-24, decouvert sur Lega_Calzone/
-                # Rosbeef_League (jamais aucune ligne dans division_classement_
-                # live malgre une journee 1 en principe terminee).
-                if not has_live_row and game_week > 1:
+                # Rattrapage : une ligue peut prendre du retard de DEUX facons --
+                # soit elle n'a JAMAIS ete pollee en direct (cron en panne, ligue
+                # ajoutee en retard -- has_live_row False, meme incident deja
+                # documente dans scripts/backfill_gameweek.py, 2026-08-23 sur
+                # Ligue_2_EKT), soit elle a deja des donnees mais est restee
+                # bloquee UNE OU PLUSIEURS journees derriere le calendrier reel
+                # (retour utilisateur 2026-08-25, "notre script ne va pas
+                # recuperer sur MPG les journees terminees" -- decouvert sur
+                # Ligue_2_EKT/Liga_Tapas, chacune manquant une journee malgre
+                # des donnees deja presentes -- l'ancienne version de ce
+                # rattrapage ne se declenchait QUE si has_live_row etait
+                # entierement vide, jamais pour un simple retard partiel).
+                # Dans les deux cas : repere la derniere journee CONNUE via
+                # division_classement_live.game_week (0 si aucune), puis
+                # archive TOUTES les journees manquantes dans l'ordre --
+                # obligatoire, l'archive cumule (cf. backfill_gameweek.py).
+                known_gw_res = (
+                    sb.table("division_classement_live").select("game_week")
+                    .eq("league_code", short_id).eq("season", league["seasonSearch"])
+                    .order("game_week", desc=True).limit(1).execute().data
+                )
+                known_game_week = known_gw_res[0]["game_week"] if known_gw_res else 0
+                missing_game_weeks = list(range(known_game_week + 1, game_week))
+
+                if missing_game_weeks:
                     total_divisions = get_live_total_divisions(short_id)
-                    archived = archive_closed_gameweek_if_needed(sb, league, game_week - 1, total_divisions)
-                    if archived == total_divisions:
+                    any_newly_archived = False
+                    for gw in missing_game_weeks:
+                        archived = archive_closed_gameweek_if_needed(sb, league, gw, total_divisions)
+                        if archived == total_divisions:
+                            any_newly_archived = True
+                            print(f"  {name} : rattrapage J{gw} archivee ({archived}/{total_divisions}).")
+                        else:
+                            if archived:
+                                print(f"  {name} : rattrapage J{gw} partiel ({archived}/{total_divisions}), reessai au prochain tick.")
+                            break  # J(gw+1) depend de J(gw) deja complete -- inutile de tenter la suite ce tick
+                    if any_newly_archived:
                         refresh_league_from_archive(sb, league, total_divisions)
-                        print(f"  {name} : rattrapage J{game_week - 1} archivee ({archived}/{total_divisions}).")
-                    elif archived:
-                        print(f"  {name} : rattrapage J{game_week - 1} partiel ({archived}/{total_divisions}), reessai au prochain tick.")
                 print(f"  {name} : hors fenetre J{game_week} "
                       f"({window_start:%d/%m %H:%M} -> {window_end:%d/%m %H:%M} UTC).")
                 continue
