@@ -20,11 +20,17 @@
     padding: 0.5rem 1rem; font-size: 0.9rem; font-weight: 600; cursor: pointer;
   }
   .controls button:hover { background: var(--mpg-action-hover); }
-  .search-row { margin: 0.75rem 0; }
+  .search-row { display: flex; gap: 0.5rem; margin: 0.75rem 0; }
   .search-row input {
-    width: 100%; border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius);
+    flex: 1; border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius);
     padding: 0.5rem 0.75rem; font-size: 0.9rem; font-family: inherit; color: var(--mpg-title);
   }
+  .locate-btn {
+    border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius);
+    padding: 0.5rem 0.75rem; font-size: 1rem; background: var(--mpg-action-soft); cursor: pointer;
+    white-space: nowrap;
+  }
+  .locate-btn:hover { background: var(--mpg-border-soft); }
 
   .table-wrap { overflow-x: auto; }
   .mpg-table th, .mpg-table td { padding: 0.5rem 0.6rem; border-bottom: 0.5px solid var(--mpg-border-soft); }
@@ -69,6 +75,7 @@
 
 <div class="search-row mpg-no-print">
   <input type="text" id="search" placeholder="Rechercher un manager...">
+  <button class="locate-btn" id="locate-btn" title="Où suis-je ?">📍 Où suis-je ?</button>
 </div>
 <p class="meta">Points = somme des classements de ligue + les 16 bonus généraux + Multi Boss/La Triplette/Podium/Super Podium. Vérifié contre le classement de référence : 3 écarts sur 72 managers, tous dus au fichier de référence pas encore régénéré (pas à une différence de calcul).</p>
 
@@ -239,6 +246,11 @@
   // Charger alourdit l'experience" -- chaque changement recharge aussitot.
   document.getElementById("season").addEventListener("change", load);
   document.getElementById("search").addEventListener("input", applyFilter);
+  // Retour utilisateur 2026-08-25, "bouton 'Ou suis-je ?' ... le tableau
+  // defile jusqu'a la place du manager selectionne".
+  document.getElementById("locate-btn").addEventListener("click", () => {
+    document.querySelector(".mpg-row-selected")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
   await loadManagerNames();
   await initGlobalManagerSelector();
   load();

@@ -133,6 +133,7 @@
 <div class="controls mpg-no-print">
   <label>Ligue<select id="leagueCode"></select></label>
   <label>Division<select id="division"></select></label>
+  <button id="locate-btn" title="Où suis-je ?">📍 Où suis-je ?</button>
 </div>
 
 <div id="situation"></div>
@@ -230,6 +231,11 @@
     load();
   });
   document.getElementById("division").addEventListener("change", load);
+  // Retour utilisateur 2026-08-25, "bouton 'Ou suis-je ?' ... le tableau
+  // defile jusqu'a la place du manager selectionne".
+  document.getElementById("locate-btn").addEventListener("click", () => {
+    document.querySelector(".mpg-row-selected")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
 
   // Registre managers (retour utilisateur 2026-08-24, "on voit toujours un
   // nom d'equipe au lieu du realname") -- {userId: RealName}, charge une
