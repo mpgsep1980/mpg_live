@@ -126,6 +126,15 @@ def _rank_teams(standings: list[dict], division_matches: list[dict] | None = Non
     4. points en confrontation directe  5. différence de buts particulière
     6. buts marqués à l'extérieur
 
+    7. En cas de doute persistant (résultat qui surprend, ou vérification d'un
+    signalement utilisateur comme celui du 2026-08-25 sur Rosbeef_League D8) :
+    aller confronter le résultat à l'API MPG officielle elle-même --
+    https://api.mpg.football/division/{shortId}_{season}_{division}, champ
+    `liveState.standings[team_id].rank` -- avant de conclure à un bug de LOGIQUE
+    ici. C'est cette vérification qui a confirmé que les niveaux 1-6 étaient
+    corrects et que le vrai bug était ailleurs (rang AFFICHÉ recalculé par un
+    tri séparé et incomplet, cf. core/live_projection.py::_rank_rows).
+
     Avant ce correctif, le tri s'arrêtait à un 4e critère redondant (buts contre --
     mathématiquement déjà fixé dès que diff ET buts pour sont égaux, donc ne
     départageait jamais rien en pratique) : toute égalité restante retombait sur
