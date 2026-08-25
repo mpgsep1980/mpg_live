@@ -104,7 +104,14 @@
   .sim-result .label { font-size: 0.75rem; color: var(--mpg-text-soft); }
   .sweep-bad { color: var(--mpg-danger); font-weight: 600; }
 
-  /* --- Empilement mobile plutot que scroll horizontal (charte section 5) --- */
+  /* --- Empilement mobile plutot que scroll horizontal (charte section 5) ---
+     Retour utilisateur 2026-08-25, "c'est tres moche" : l'ancien
+     display:flex;justify-content:space-between etirait chaque paire
+     label/valeur sur toute la largeur de la carte (~340px), rendant la
+     valeur illisible tres loin de son libelle (ex. "Pts" a gauche, "3" seul
+     tout a droite). Les stats numeriques (.num) sont maintenant des puces
+     compactes en ligne, qui s'enchainent/wrap plusieurs par ligne -- rang/
+     equipe/badges restent en pleine largeur (titre de carte). */
   @media (max-width: 640px) {
     .mpg-table thead { display: none; }
     .mpg-table, .mpg-table tbody, .mpg-table tr, .mpg-table td { display: block; width: 100%; }
@@ -112,12 +119,17 @@
       border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius);
       margin-bottom: 0.5rem; padding: 0.5rem 0.75rem;
     }
-    .mpg-table td { border: none; padding: 0.15rem 0; display: flex; justify-content: space-between; }
-    .mpg-table td.num { text-align: right; }
+    .mpg-table td { border: none; padding: 0.15rem 0; }
     .mpg-table td::before { content: attr(data-label); color: var(--mpg-text-soft); font-size: 0.75rem; }
     .mpg-table td.team::before { content: none; }
     .mpg-table td.rank::before { content: none; }
-    .mpg-table td.rank { font-weight: 700; font-size: 1.1rem; justify-content: flex-start; gap: 0.5rem; }
+    .mpg-table td.rank { font-weight: 700; font-size: 1.1rem; }
+    .mpg-table td.num {
+      display: inline-flex; width: auto; align-items: baseline; gap: 0.25rem;
+      padding: 0.15rem 0.6rem 0.15rem 0;
+    }
+    .mpg-table td.num::before { content: attr(data-label) " :"; }
+    .mpg-table td[data-label="Badges"] { padding-top: 0.35rem; }
   }
 </style>
 </head>

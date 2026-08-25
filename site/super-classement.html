@@ -41,6 +41,33 @@
   .status-msg { color: var(--mpg-text-soft); font-size: 0.9rem; margin: 1rem 0; }
   .status-msg.err { color: var(--mpg-danger); }
   .back-link { font-size: 0.85rem; }
+
+  /* Empilement en cartes sur mobile (retour utilisateur 2026-08-25, "c'est
+     tres moche" -- cette page n'avait jamais recu le meme traitement que
+     division.html/ligue.html : table large forcee dans .table-wrap
+     (overflow-x: auto), illisible/coupee a l'ecran sur un telephone). Meme
+     patron exact que division.html -- pas de module CSS partage sur ce
+     site, chaque page reste autonome. */
+  @media (max-width: 640px) {
+    .table-wrap { overflow-x: visible; }
+    .mpg-table thead { display: none; }
+    .mpg-table, .mpg-table tbody, .mpg-table tr, .mpg-table td { display: block; width: 100%; }
+    .mpg-table tr {
+      border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius);
+      margin-bottom: 0.5rem; padding: 0.5rem 0.75rem;
+    }
+    .mpg-table td { border: none; padding: 0.15rem 0; }
+    .mpg-table td::before { content: attr(data-label); color: var(--mpg-text-soft); font-size: 0.75rem; }
+    .mpg-table td.team::before { content: none; }
+    .mpg-table td.rank::before { content: none; }
+    .mpg-table td.rank { font-weight: 700; font-size: 1.1rem; }
+    .mpg-table td.num {
+      display: inline-flex; width: auto; align-items: baseline; gap: 0.25rem;
+      padding: 0.15rem 0.6rem 0.15rem 0;
+    }
+    .mpg-table td.num::before { content: attr(data-label) " :"; }
+    .mpg-table td[data-label="Bonus"] { padding-top: 0.35rem; }
+  }
 </style>
 </head>
 <body>
@@ -183,10 +210,10 @@
     const displayName = realNameByUid[row.user_id] || teamName;
     return `
       <tr data-name="${displayName.toLowerCase()}" class="${isMe ? "mpg-row-selected" : ""}">
-        <td class="rank">#${row.rang}</td>
-        <td>${displayName}</td>
-        <td class="num">${fmt(row.points)}</td>
-        <td>${bonusBadges(row.bonus_details)}</td>
+        <td class="rank" data-label="Rang">#${row.rang}</td>
+        <td class="team" data-label="Équipe">${displayName}</td>
+        <td class="num" data-label="Pts">${fmt(row.points)}</td>
+        <td data-label="Bonus">${bonusBadges(row.bonus_details)}</td>
       </tr>`;
   }
 
