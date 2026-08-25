@@ -35,6 +35,23 @@
   .situation-item .label { font-size: 0.75rem; color: var(--mpg-text-soft); }
   .situation-note { margin: 0.75rem 0 0; font-size: 0.75rem; color: var(--mpg-text-soft); }
 
+  /* --- Toutes mes divisions (expanders) --- */
+  .division-expander {
+    border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); margin: 0.75rem 0; overflow: hidden;
+  }
+  .division-expander summary {
+    display: flex; align-items: center; gap: 0.6rem; padding: 0.85rem 1.1rem; cursor: pointer;
+    list-style: none; font-size: 0.95rem;
+  }
+  .division-expander summary::-webkit-details-marker { display: none; }
+  .division-expander summary::before { content: "▸"; color: var(--mpg-text-off); transition: transform 150ms ease; }
+  .division-expander[open] summary::before { transform: rotate(90deg); }
+  .summary-dot { width: 0.6rem; height: 0.6rem; border-radius: 999px; flex-shrink: 0; }
+  .summary-league { font-weight: 700; }
+  .summary-division { color: var(--mpg-text-soft); font-size: 0.85rem; }
+  .summary-status { margin-left: auto; font-size: 0.85rem; font-weight: 600; white-space: nowrap; }
+  .expander-body { padding: 0.5rem 1.1rem 1.1rem; border-top: 0.5px solid var(--mpg-border-soft); }
+
   /* --- Resultats de la journee --- */
   .matches-card {
     border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius);
@@ -137,11 +154,17 @@
   <button id="locate-btn" title="Où suis-je ?">📍 Où suis-je ?</button>
 </div>
 
-<div id="situation"></div>
-<div id="simulator"></div>
-<div id="status" class="status-msg"></div>
-<div id="table-container"></div>
-<div id="matches"></div>
+<div id="all-status" class="status-msg"></div>
+<div id="all-divisions"></div>
+
+<div id="single-division-view" style="display:none">
+  <p class="back-link mpg-no-print" id="back-to-all"></p>
+  <div id="situation"></div>
+  <div id="simulator"></div>
+  <div id="status" class="status-msg"></div>
+  <div id="table-container"></div>
+  <div id="matches"></div>
+</div>
 
 <script type="module">
   import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -181,6 +204,19 @@
   function leagueTheme(nom) {
     return LEAGUE_THEME_BY_NOM[(nom || "").toLowerCase()] || "neutral";
   }
+  // Couleur de TEXTE lisible par theme (seriea/l2 sont trop clairs en base
+  // pour du texte, cf. leur variante "-text" dediee) -- meme mapping que
+  // index.html/ligues.html.
+  const THEME_TEXT = {
+    l1: "var(--mpg-league-l1)", pl: "var(--mpg-league-pl)", liga: "var(--mpg-league-liga)",
+    seriea: "var(--mpg-league-seriea-text)", l2: "var(--mpg-league-l2-text)", ldc: "var(--mpg-league-ldc)",
+    neutral: "var(--mpg-text-soft)",
+  };
+  const THEME_BAR = {
+    l1: "var(--mpg-league-l1)", pl: "var(--mpg-league-pl)", liga: "var(--mpg-league-liga)",
+    seriea: "var(--mpg-league-seriea)", l2: "var(--mpg-league-l2)", ldc: "var(--mpg-league-ldc)",
+    neutral: "var(--mpg-text-off)",
+  };
 
   async function loadLeagueOptions() {
     const { data, error } = await supabase
@@ -648,7 +684,104 @@
       </div>`;
   }
 
+  // "Toutes mes divisions" -- retour utilisateur 2026-08-25, "Quand je vais
+  // sur division, je veux que toutes les ligues actives s'affichent" : par
+  // defaut (manager choisi, aucun ?ligue= explicite dans l'URL), affiche
+  // TOUTES les divisions ou joue ce manager (meme technique que "Mes
+  // ligues" sur index.html), chacune dans un expander avec son classement
+  // complet + ses resultats de journee -- pas le simulateur (deja couvert
+  // par site/simulations.html, qui se concentre sur les divisions EN
+  // DIRECT). Choisir manuellement une Ligue/Division dans les selecteurs
+  // bascule sur la vue mono-division existante (cf. load()).
+  function showAllMode() {
+    document.getElementById("all-status").style.display = "";
+    document.getElementById("all-divisions").style.display = "";
+    document.getElementById("single-division-view").style.display = "none";
+  }
+  function showSingleMode() {
+    document.getElementById("all-status").style.display = "none";
+    document.getElementById("all-divisions").style.display = "none";
+    document.getElementById("single-division-view").style.display = "";
+  }
+
+  function divisionExpanderHtml(row, league, userId) {
+    const theme = leagueTheme(league && league.nom);
+    const name = league ? league.nom.replace(/_/g, " ") : row.league_code;
+    const statusColor = row.is_live ? "var(--mpg-warning)" : "var(--mpg-success)";
+    const statusLabel = row.is_live ? "en cours" : "terminée";
+    const entries = row.data || [];
+    const blockId = `div-block-${row.league_code}-${row.division}`;
+    return `
+      <details class="division-expander"${row.is_live ? " open" : ""}>
+        <summary>
+          <span class="summary-dot" style="background:${THEME_BAR[theme]}"></span>
+          <span class="summary-league" style="color:${THEME_TEXT[theme]}">${name}</span>
+          <span class="summary-division">Division ${row.division} · Journée ${row.game_week}</span>
+          <span class="summary-status" style="color:${statusColor}">${statusLabel}</span>
+        </summary>
+        <div class="expander-body">
+          <div class="table-wrap">
+            <table class="mpg-table mpg-head-${theme}">
+              <thead><tr>
+                <th>Rang</th><th>Équipe</th><th>Pts</th><th>J</th><th>V</th><th>N</th><th>D</th>
+                <th>BP</th><th>BC</th><th>DG</th><th>Badges</th>
+              </tr></thead>
+              <tbody>${entries.map(e => rowHtml(e, userId && e.userId === userId)).join("")}</tbody>
+            </table>
+          </div>
+          <div id="${blockId}"></div>
+        </div>
+      </details>`;
+  }
+
+  async function loadAllMyDivisions(userId) {
+    showAllMode();
+    const allStatusEl = document.getElementById("all-status");
+    const allEl = document.getElementById("all-divisions");
+    const subtitleEl = document.getElementById("subtitle");
+    subtitleEl.textContent = "Toutes tes divisions, toutes ligues confondues.";
+    allStatusEl.textContent = "Chargement...";
+    allStatusEl.className = "status-msg";
+    allEl.innerHTML = "";
+
+    const { data: divData, error } = await supabase.from("division_classement_live").select("*");
+    if (error) {
+      allStatusEl.textContent = "Erreur : " + error.message;
+      allStatusEl.className = "status-msg err";
+      return;
+    }
+
+    const myRows = (divData || []).filter(row => (row.data || []).some(e => e.userId === userId));
+    if (!myRows.length) {
+      allStatusEl.textContent = "Aucune division trouvée pour ce manager (saison pas encore pollée).";
+      return;
+    }
+    myRows.sort((a, b) => (b.is_live - a.is_live) || a.league_code.localeCompare(b.league_code));
+
+    allStatusEl.textContent = "";
+    allEl.innerHTML = myRows.map(row => divisionExpanderHtml(row, leaguesByCode[row.league_code], userId)).join("");
+
+    await Promise.all(myRows.map(async row => {
+      const league = leaguesByCode[row.league_code];
+      if (!league) return;
+      const { data: snapshotRows } = await supabase
+        .from("live_snapshots")
+        .select("data")
+        .eq("league_code", row.league_code)
+        .eq("season", league.season_search)
+        .eq("division", row.division)
+        .eq("game_week", row.game_week)
+        .limit(1);
+      const matches = (snapshotRows && snapshotRows[0] && snapshotRows[0].data) || [];
+      const entries = row.data || [];
+      const teamNameByUserId = Object.fromEntries(entries.map(e => [e.userId, e.teamName]));
+      const blockEl = document.getElementById(`div-block-${row.league_code}-${row.division}`);
+      if (blockEl) blockEl.innerHTML = matchesHtml(matches, teamNameByUserId, userId, row.league_code, row.division, row.game_week);
+    }));
+  }
+
   async function load() {
+    showSingleMode();
     const leagueCode = document.getElementById("leagueCode").value;
     const league = leaguesByCode[leagueCode];
     const division = Number(document.getElementById("division").value);
@@ -659,6 +792,9 @@
     const simulatorEl = document.getElementById("simulator");
     const tableEl = document.getElementById("table-container");
     const matchesEl = document.getElementById("matches");
+    const backEl = document.getElementById("back-to-all");
+    const currentUserId = document.getElementById("global-manager").value;
+    backEl.innerHTML = currentUserId ? `<a href="division.html?user=${currentUserId}">&larr; Toutes mes divisions</a>` : "";
 
     if (!league) { statusEl.textContent = "Choisis une ligue."; return; }
 
@@ -732,23 +868,23 @@
   }
 
   await Promise.all([loadLeagueOptions(), loadManagerNames()]);
-  const globalUserId = await initGlobalManagerSelector(resolveManagerDivision);
+  // Pas de resolveManagerDivision ici (contrairement au changement de
+  // #global-manager -- cf. plus bas) : le choix par defaut est desormais
+  // "toutes mes divisions" (loadAllMyDivisions), pas un saut automatique
+  // vers UNE seule.
+  const globalUserId = await initGlobalManagerSelector();
 
-  // Au tout premier chargement (pas seulement au changement du selecteur) :
-  // si un manager est deja choisi (localStorage/?user=) mais qu'aucune
-  // ligue/division explicite n'est dans l'URL, pre-selectionner SA division
-  // -- retour utilisateur 2026-08-25, "placer les divisions du manager
-  // choisi".
+  // Au tout premier chargement : manager choisi (localStorage/?user=) mais
+  // aucune ligue/division explicite dans l'URL -> vue "toutes mes
+  // divisions" par defaut (retour utilisateur 2026-08-25, "je veux que
+  // toutes les ligues actives s'affichent"). Un lien ?ligue=&division=
+  // explicite (ex. depuis "Mes ligues" sur index.html) garde le
+  // comportement mono-division existant.
   if (globalUserId && !params.get("ligue")) {
-    const extra = await resolveManagerDivision(globalUserId);
-    if (extra.ligue) {
-      document.getElementById("leagueCode").value = extra.ligue;
-      populateDivisionOptions();
-      if (extra.division) document.getElementById("division").value = extra.division;
-    }
+    await loadAllMyDivisions(globalUserId);
+  } else {
+    load();
   }
-
-  load();
 </script>
 
 </body>
