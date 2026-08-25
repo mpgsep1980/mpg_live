@@ -116,6 +116,9 @@
       <a class="mpg-banner-item" href="division.html">Divisions</a>
       <a class="mpg-banner-item" href="trophees.html">Trophées</a>
     </nav>
+    <label class="mpg-banner-manager mpg-no-print">
+      <select id="global-manager"><option value="">— Manager —</option></select>
+    </label>
   </div>
 </header>
 <script>
@@ -130,7 +133,6 @@
 <div class="controls mpg-no-print">
   <label>Ligue<select id="leagueCode"></select></label>
   <label>Division<select id="division"></select></label>
-  <label>Manager (Ma situation)<select id="userId" style="min-width:12em"><option value="">— Ma situation (optionnel) —</option></select></label>
 </div>
 
 <div id="situation"></div>
@@ -232,6 +234,50 @@
     const { data, error } = await supabase.from("managers").select("user_id, real_name");
     if (error || !data) return;
     realNameByUid = Object.fromEntries(data.map(m => [m.user_id, m.real_name]));
+  }
+
+  // Selecteur de manager global (bandeau, cf. mpg-tokens.css) -- retour
+  // utilisateur 2026-08-25, "le choix du manager ... devrait rester fixe sur
+  // toutes les pages ... placer les divisions du manager choisi". Meme
+  // composant duplique sur chaque page (pas de module JS partage sur ce
+  // site) -- localStorage + ?user= (URL prioritaire au premier chargement).
+  const STORAGE_KEY = "mpg_live_user_id";
+
+  async function initGlobalManagerSelector(resolveExtraParams) {
+    const { data } = await supabase.from("managers").select("user_id, real_name").order("real_name");
+    const select = document.getElementById("global-manager");
+    select.innerHTML = `<option value="">— Manager —</option>`
+      + (data || []).map(m => `<option value="${m.user_id}">${m.real_name}</option>`).join("");
+    const wanted = params.get("user") || localStorage.getItem(STORAGE_KEY) || "";
+    if (wanted) select.value = wanted;
+    select.addEventListener("change", async () => {
+      const uid = select.value;
+      if (uid) localStorage.setItem(STORAGE_KEY, uid); else localStorage.removeItem(STORAGE_KEY);
+      const url = new URL(location.href);
+      if (uid) url.searchParams.set("user", uid); else url.searchParams.delete("user");
+      if (uid && resolveExtraParams) {
+        const extra = await resolveExtraParams(uid);
+        for (const [k, v] of Object.entries(extra || {})) url.searchParams.set(k, v);
+      }
+      location.href = url.toString();
+    });
+    return wanted;
+  }
+
+  // Retrouve la/les division(s) ou joue ce manager (meme technique que
+  // index.html "Mes ligues") -- garde la ligue courante si le manager y
+  // figure, sinon prend la premiere trouvee. Utilise a la fois au
+  // changement du selecteur global et au tout premier chargement de page.
+  async function resolveManagerDivision(userId) {
+    const currentLigue = document.getElementById("leagueCode").value;
+    const { data } = await supabase.from("division_classement_live").select("league_code, division, data");
+    const matches = (data || [])
+      .map(row => ({ row, entry: (row.data || []).find(e => e.userId === userId) }))
+      .filter(m => m.entry);
+    if (!matches.length) return {};
+    const keep = matches.find(m => m.row.league_code === currentLigue);
+    const pick = keep || matches[0];
+    return { ligue: pick.row.league_code, division: pick.row.division };
   }
 
   // Simulateur de bonus (retour utilisateur 2026-08-24, "on permettra aux
@@ -497,20 +543,6 @@
     }
   }
 
-  // Selecteur de manager par VRAI nom (retour utilisateur 2026-08-24, "on
-  // choisit le joueur avec son vrai nom") -- remplace le userId tape a la
-  // main, construit a partir des entries deja chargees + du registre
-  // managers (realNameByUid, cf. loadManagerNames ci-dessus).
-  function populateUserSelect(entries) {
-    const select = document.getElementById("userId");
-    const wanted = select.value || params.get("user") || "";
-    const sorted = [...entries].sort((a, b) =>
-      (realNameByUid[a.userId] || a.teamName || a.userId).localeCompare(realNameByUid[b.userId] || b.teamName || b.userId));
-    select.innerHTML = `<option value="">— Ma situation (optionnel) —</option>` +
-      sorted.map(e => `<option value="${e.userId}">${realNameByUid[e.userId] || e.teamName || e.userId}</option>`).join("");
-    if (wanted && entries.some(e => e.userId === wanted)) select.value = wanted;
-  }
-
   const BADGE_TONE = { cs: "success", manita: "fire", onFire: "amber", boss: "gold", pichichi: "violet", mur: "steel" };
 
   function fmt(n) {
@@ -648,8 +680,7 @@
       + ` · mis à jour ${new Date(row.updated_at).toLocaleString("fr-FR")}`;
 
     const entries = row.data || [];
-    populateUserSelect(entries);
-    const userId = document.getElementById("userId").value.trim();
+    const userId = document.getElementById("global-manager").value;
     const myEntry = userId ? entries.find(e => e.userId === userId) : null;
     situationEl.innerHTML = situationHtml(myEntry);
     simulatorEl.innerHTML = simulatorHtml(myEntry, leagueCode, division, row.game_week);
@@ -684,8 +715,23 @@
     matchesEl.innerHTML = matchesHtml(matches, teamNameByUserId, userId, leagueCode, division, row.game_week);
   }
 
-  document.getElementById("userId").addEventListener("change", load);
   await Promise.all([loadLeagueOptions(), loadManagerNames()]);
+  const globalUserId = await initGlobalManagerSelector(resolveManagerDivision);
+
+  // Au tout premier chargement (pas seulement au changement du selecteur) :
+  // si un manager est deja choisi (localStorage/?user=) mais qu'aucune
+  // ligue/division explicite n'est dans l'URL, pre-selectionner SA division
+  // -- retour utilisateur 2026-08-25, "placer les divisions du manager
+  // choisi".
+  if (globalUserId && !params.get("ligue")) {
+    const extra = await resolveManagerDivision(globalUserId);
+    if (extra.ligue) {
+      document.getElementById("leagueCode").value = extra.ligue;
+      populateDivisionOptions();
+      if (extra.division) document.getElementById("division").value = extra.division;
+    }
+  }
+
   load();
 </script>
 

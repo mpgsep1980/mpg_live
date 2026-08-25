@@ -10,13 +10,6 @@
   h1 { font-size: 1.4rem; margin: 0 0 1rem; }
   .meta { color: var(--mpg-text-soft); font-size: 0.85rem; }
 
-  .identity-row { display: flex; gap: 0.5rem; align-items: end; flex-wrap: wrap; margin: 0 0 1.5rem; }
-  .identity-row label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.75rem; color: var(--mpg-text-soft); }
-  .identity-row select {
-    border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); padding: 0.4rem 0.5rem;
-    font-size: 0.9rem; font-family: inherit; color: var(--mpg-title); min-width: 14em;
-  }
-
   .card { border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); padding: 1.25rem; margin: 1rem 0; }
   .card h2 { margin: 0 0 1rem; font-size: 1.05rem; display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
   .card h2 a { font-size: 0.85rem; font-weight: 500; color: var(--mpg-action); text-decoration: none; }
@@ -59,6 +52,9 @@
       <a class="mpg-banner-item" href="division.html">Divisions</a>
       <a class="mpg-banner-item" href="trophees.html">Trophées</a>
     </nav>
+    <label class="mpg-banner-manager mpg-no-print">
+      <select id="global-manager"><option value="">— Manager —</option></select>
+    </label>
   </div>
 </header>
 <script>
@@ -66,10 +62,6 @@
     if (a.pathname === location.pathname) a.classList.add("is-active");
   }
 </script>
-
-<div class="identity-row mpg-no-print">
-  <label>Qui es-tu ?<select id="userId"><option value="">— Choisir un manager —</option></select></label>
-</div>
 
 <h1 id="title">Accueil</h1>
 <div id="status" class="status-msg"></div>
@@ -144,15 +136,32 @@
     return Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\.0$/, "");
   }
 
-  async function populateUserSelect() {
-    const { data, error } = await supabase.from("managers").select("user_id, real_name").order("real_name");
-    const select = document.getElementById("userId");
-    if (!error && data) {
-      select.innerHTML = `<option value="">— Choisir un manager —</option>`
-        + data.map(m => `<option value="${m.user_id}">${m.real_name}</option>`).join("");
-    }
+  // Selecteur de manager global (bandeau, cf. mpg-tokens.css) -- retour
+  // utilisateur 2026-08-25, "le choix du manager ... devrait rester fixe sur
+  // toutes les pages". Meme composant duplique sur chaque page (pas de
+  // module JS partage sur ce site) -- localStorage + ?user= (URL prioritaire
+  // au premier chargement). `resolveExtraParams(userId)` optionnel : renvoie
+  // des parametres supplementaires a fusionner dans l'URL avant de naviguer
+  // (utilise par division.html pour pre-selectionner la division du manager).
+  async function initGlobalManagerSelector(resolveExtraParams) {
+    const { data } = await supabase.from("managers").select("user_id, real_name").order("real_name");
+    const select = document.getElementById("global-manager");
+    select.innerHTML = `<option value="">— Manager —</option>`
+      + (data || []).map(m => `<option value="${m.user_id}">${m.real_name}</option>`).join("");
     const wanted = params.get("user") || localStorage.getItem(STORAGE_KEY) || "";
     if (wanted) select.value = wanted;
+    select.addEventListener("change", async () => {
+      const uid = select.value;
+      if (uid) localStorage.setItem(STORAGE_KEY, uid); else localStorage.removeItem(STORAGE_KEY);
+      const url = new URL(location.href);
+      if (uid) url.searchParams.set("user", uid); else url.searchParams.delete("user");
+      if (uid && resolveExtraParams) {
+        const extra = await resolveExtraParams(uid);
+        for (const [k, v] of Object.entries(extra || {})) url.searchParams.set(k, v);
+      }
+      location.href = url.toString();
+    });
+    return wanted;
   }
 
   function summaryHtml(myRow, participantCount) {
@@ -221,7 +230,7 @@
   }
 
   async function load() {
-    const userId = document.getElementById("userId").value;
+    const userId = document.getElementById("global-manager").value;
     const statusEl = document.getElementById("status");
     const contentEl = document.getElementById("content");
     const titleEl = document.getElementById("title");
@@ -231,10 +240,8 @@
       statusEl.className = "status-msg";
       contentEl.style.display = "none";
       titleEl.textContent = "Accueil";
-      localStorage.removeItem(STORAGE_KEY);
       return;
     }
-    localStorage.setItem(STORAGE_KEY, userId);
 
     statusEl.textContent = "Chargement...";
     statusEl.className = "status-msg";
@@ -284,8 +291,7 @@
     contentEl.style.display = "";
   }
 
-  document.getElementById("userId").addEventListener("change", load);
-  await populateUserSelect();
+  await initGlobalManagerSelector();
   load();
 </script>
 

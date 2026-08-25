@@ -35,6 +35,9 @@
       <a class="mpg-banner-item" href="division.html">Divisions</a>
       <a class="mpg-banner-item" href="trophees.html">Trophées</a>
     </nav>
+    <label class="mpg-banner-manager mpg-no-print">
+      <select id="global-manager"><option value="">— Manager —</option></select>
+    </label>
   </div>
 </header>
 <script>
@@ -55,10 +58,35 @@
   const SUPABASE_URL = "https://zvmngpoogwjiknqrkjky.supabase.co";
   const SUPABASE_ANON_KEY = "sb_publishable_YhAD0_spZJF58Dt_TTQplQ_VrFSKRK8";
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const params = new URLSearchParams(location.search);
 
   // Meme convention que super-classement.html/index.html (pas de detection
   // automatique de "la" saison en cours).
   const SEASON = 2026;
+
+  // Selecteur de manager global (bandeau, cf. mpg-tokens.css) -- retour
+  // utilisateur 2026-08-25, "le choix du manager ... devrait rester fixe sur
+  // toutes les pages". Meme composant duplique sur chaque page (pas de
+  // module JS partage sur ce site) -- localStorage + ?user= (URL prioritaire
+  // au premier chargement). Cette page n'a rien a personnaliser elle-meme,
+  // le selecteur sert juste a propager le choix vers les autres pages.
+  const STORAGE_KEY = "mpg_live_user_id";
+
+  async function initGlobalManagerSelector() {
+    const { data } = await supabase.from("managers").select("user_id, real_name").order("real_name");
+    const select = document.getElementById("global-manager");
+    select.innerHTML = `<option value="">— Manager —</option>`
+      + (data || []).map(m => `<option value="${m.user_id}">${m.real_name}</option>`).join("");
+    const wanted = params.get("user") || localStorage.getItem(STORAGE_KEY) || "";
+    if (wanted) select.value = wanted;
+    select.addEventListener("change", () => {
+      const uid = select.value;
+      if (uid) localStorage.setItem(STORAGE_KEY, uid); else localStorage.removeItem(STORAGE_KEY);
+      const url = new URL(location.href);
+      if (uid) url.searchParams.set("user", uid); else url.searchParams.delete("user");
+      location.href = url.toString();
+    });
+  }
 
   // Port verbatim de core/general_bonus.py::DEFAULT_GENERAL_BONUS_CATEGORIES
   // (retour utilisateur 2026-08-24, "Trophees se trouve dans
@@ -163,6 +191,7 @@
     }).join("");
   }
 
+  initGlobalManagerSelector();
   load();
 </script>
 

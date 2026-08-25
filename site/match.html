@@ -73,6 +73,9 @@
       <a class="mpg-banner-item" href="division.html">Divisions</a>
       <a class="mpg-banner-item" href="trophees.html">Trophées</a>
     </nav>
+    <label class="mpg-banner-manager mpg-no-print">
+      <select id="global-manager"><option value="">— Manager —</option></select>
+    </label>
   </div>
 </header>
 <script>
@@ -95,6 +98,28 @@
   const SUPABASE_ANON_KEY = "sb_publishable_YhAD0_spZJF58Dt_TTQplQ_VrFSKRK8";
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   const params = new URLSearchParams(location.search);
+
+  // Selecteur de manager global (bandeau, cf. mpg-tokens.css) -- retour
+  // utilisateur 2026-08-25, "le choix du manager ... devrait rester fixe sur
+  // toutes les pages". PAS branche sur ?user= ici, contrairement aux autres
+  // pages -- sur match.html ce parametre designe l'ancre du match affiche
+  // (un des deux managers du match, cf. plus bas), pas "qui consulte le
+  // site". Persiste juste en localStorage pour rester coherent en
+  // naviguant vers une autre page, sans jamais toucher a l'URL courante.
+  const STORAGE_KEY = "mpg_live_user_id";
+
+  async function initGlobalManagerSelector() {
+    const { data } = await supabase.from("managers").select("user_id, real_name").order("real_name");
+    const select = document.getElementById("global-manager");
+    select.innerHTML = `<option value="">— Manager —</option>`
+      + (data || []).map(m => `<option value="${m.user_id}">${m.real_name}</option>`).join("");
+    const wanted = localStorage.getItem(STORAGE_KEY) || "";
+    if (wanted) select.value = wanted;
+    select.addEventListener("change", () => {
+      const uid = select.value;
+      if (uid) localStorage.setItem(STORAGE_KEY, uid); else localStorage.removeItem(STORAGE_KEY);
+    });
+  }
 
   // Retour utilisateur 2026-08-24 : "je dois pouvoir avoir acces aux
   // matchs + la possibilite des bonus, les buts MPG etc" -- detail de
@@ -494,6 +519,7 @@
     }
   }
 
+  initGlobalManagerSelector();
   load();
 </script>
 

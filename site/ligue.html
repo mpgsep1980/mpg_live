@@ -68,6 +68,9 @@
       <a class="mpg-banner-item" href="division.html">Divisions</a>
       <a class="mpg-banner-item" href="trophees.html">Trophées</a>
     </nav>
+    <label class="mpg-banner-manager mpg-no-print">
+      <select id="global-manager"><option value="">— Manager —</option></select>
+    </label>
   </div>
 </header>
 <script>
@@ -81,7 +84,6 @@
 
 <div class="controls mpg-no-print">
   <label>Ligue<select id="leagueCode"></select></label>
-  <label>userId (ma ligne)<input id="userId" placeholder="user_..." style="width:10em"></label>
 </div>
 
 <div class="search-row mpg-no-print">
@@ -150,9 +152,33 @@
     realNameByUid = Object.fromEntries(data.map(m => [m.user_id, m.real_name]));
   }
 
-  for (const [param, id] of [["user", "userId"]]) {
-    const v = params.get(param);
-    if (v) document.getElementById(id).value = v;
+  // Selecteur de manager global (bandeau, cf. mpg-tokens.css) -- retour
+  // utilisateur 2026-08-25, "le choix du manager ... devrait rester fixe sur
+  // toutes les pages ... mettre en surbrillance son nom dans les
+  // classements". Meme composant duplique sur chaque page (pas de module JS
+  // partage sur ce site) -- localStorage + ?user= (URL prioritaire au
+  // premier chargement).
+  const STORAGE_KEY = "mpg_live_user_id";
+
+  async function initGlobalManagerSelector(resolveExtraParams) {
+    const { data } = await supabase.from("managers").select("user_id, real_name").order("real_name");
+    const select = document.getElementById("global-manager");
+    select.innerHTML = `<option value="">— Manager —</option>`
+      + (data || []).map(m => `<option value="${m.user_id}">${m.real_name}</option>`).join("");
+    const wanted = params.get("user") || localStorage.getItem(STORAGE_KEY) || "";
+    if (wanted) select.value = wanted;
+    select.addEventListener("change", async () => {
+      const uid = select.value;
+      if (uid) localStorage.setItem(STORAGE_KEY, uid); else localStorage.removeItem(STORAGE_KEY);
+      const url = new URL(location.href);
+      if (uid) url.searchParams.set("user", uid); else url.searchParams.delete("user");
+      if (uid && resolveExtraParams) {
+        const extra = await resolveExtraParams(uid);
+        for (const [k, v] of Object.entries(extra || {})) url.searchParams.set(k, v);
+      }
+      location.href = url.toString();
+    });
+    return wanted;
   }
 
   const BADGE_TONE = { cs: "success", manita: "fire", onFire: "amber", boss: "gold", pichichi: "violet", mur: "steel" };
@@ -209,7 +235,7 @@
   async function load() {
     const leagueCode = document.getElementById("leagueCode").value;
     const league = leaguesByCode[leagueCode];
-    const userId = document.getElementById("userId").value.trim();
+    const userId = document.getElementById("global-manager").value;
 
     const statusEl = document.getElementById("status");
     const subtitleEl = document.getElementById("subtitle");
@@ -273,9 +299,9 @@
   // Pas de bouton "Charger" -- retour utilisateur 2026-08-24, "le bouton
   // Charger alourdit l'experience" -- chaque changement recharge aussitot.
   document.getElementById("leagueCode").addEventListener("change", load);
-  document.getElementById("userId").addEventListener("change", load);
   document.getElementById("search").addEventListener("input", applyFilter);
   await Promise.all([loadLeagueOptions(), loadManagerNames()]);
+  await initGlobalManagerSelector();
   load();
 </script>
 

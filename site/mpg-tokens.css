@@ -275,6 +275,24 @@ html.dark, .mpg-dark {
 .mpg-banner-nav { display: flex; gap: 0.25rem; flex-wrap: wrap; }
 .mpg-banner-item { text-decoration: none; padding: 0.4rem 0.75rem; font-size: 0.85rem; border-radius: var(--mpg-radius-sm); }
 
+/* Selecteur de manager global (retour utilisateur 2026-08-25, "le choix du
+   manager ... devrait rester fixe sur toutes les pages") -- une seule
+   instance de ce controle, dans le bandeau, partagee par toutes les pages
+   (persistee en localStorage, cf. STORAGE_KEY "mpg_live_user_id" duplique
+   dans chaque page -- pas de module JS partage sur ce site, chaque page
+   reste un fichier autonome). */
+.mpg-banner-manager select {
+  background-color: var(--mpg-banner-layer-chip);
+  color: var(--mpg-on-banner);
+  border: none;
+  border-radius: var(--mpg-radius);
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+  font-family: inherit;
+  max-width: 12em;
+}
+.mpg-banner-manager select:hover { background-color: var(--mpg-banner-layer-hover); }
+
 .mpg-banner-item {
   color: var(--mpg-on-banner-soft);
   transition: background-color 150ms ease, color 150ms ease;
