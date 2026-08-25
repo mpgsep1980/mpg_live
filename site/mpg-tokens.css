@@ -405,6 +405,12 @@ html.dark, .mpg-dark {
 .mpg-table tbody tr.mpg-row-selected,
 .mpg-row-selected { background-color: var(--mpg-row-selected); }
 
+/* --- Pied de page --- */
+.mpg-footer {
+  margin-top: 3rem; padding: 1.5rem 0; border-top: 0.5px solid var(--mpg-border-soft);
+  text-align: center; font-size: 0.75rem; color: var(--mpg-text-soft);
+}
+
 /* --- Impression --- */
 @media print {
   @page { size: A4 landscape; margin: 10mm; }
