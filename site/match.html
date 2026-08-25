@@ -21,18 +21,82 @@
   .match-header .score { font-size: 1.6rem; font-weight: 700; text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .match-header .meta { text-align: center; }
 
-  /* --- Compositions --- */
-  .lineups { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
-  @media (max-width: 640px) { .lineups { grid-template-columns: 1fr; } }
-  .team-column { border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); padding: 1rem 1.25rem; }
-  .team-column h2 { margin: 0 0 0.5rem; font-size: 1rem; }
-  .team-column h3 { margin: 1rem 0 0.4rem; font-size: 0.8rem; color: var(--mpg-text-soft); text-transform: uppercase; letter-spacing: 0.02em; }
-  .player-row { display: grid; grid-template-columns: 1.5rem 1fr auto auto; gap: 0.5rem; align-items: center; padding: 0.2rem 0; font-size: 0.88rem; }
-  .player-row .pos { color: var(--mpg-text-soft); font-size: 0.75rem; font-weight: 600; }
-  .player-row .pnote { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 2.2em; text-align: right; }
-  .player-row.bench-row .pname, .player-row.bench-row .pnote { color: var(--mpg-text-soft); }
-  .goal-group { font-size: 0.85rem; margin: 0.25rem 0; }
-  .goal-group .none { color: var(--mpg-text-soft); font-size: 0.8rem; }
+  /* --- Compositions -- mise en page entrelacee par ligne de poste (G/D/M/A),
+     port de admin/manager.html (retour utilisateur 2026-08-25, capture
+     127.0.0.1:5055 fournie en reference) : couleur de note a 3 paliers,
+     moyenne de ligne explicite, aura doree/rouge sur les joueurs touches par
+     un bonus, buts (reels/MPG/CSC classique/CSC Rotaldo) fusionnes dans une
+     seule liste chronologique par point de couleur plutot que des paragraphes
+     separes. --mpg-success/--mpg-warning/--mpg-danger reutilises tels quels
+     (memes valeurs hex que --gold/#4caf50/#c9484a de la reference) pour que
+     la barre "chances de resultat" (cf. oddsBarHtml) partage la meme echelle
+     -- coherence demandee explicitement. */
+  .lineups-card { border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); padding: 1rem 1.25rem; margin: 1rem 0; }
+  .comp-teams { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+  .comp-team-name { font-weight: 700; font-size: 1rem; }
+  .comp-team-name.away { text-align: right; }
+
+  .position-block { margin-top: 0.5rem; }
+  .position-label {
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--mpg-text-soft); text-align: center; margin: 0.6rem 0 0.35rem;
+    border-top: 0.5px solid var(--mpg-border-soft); padding-top: 0.5rem;
+  }
+  .position-label.line-avg-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 0.4rem; }
+  .line-avg { font-weight: 700; color: var(--mpg-warning); font-variant-numeric: tabular-nums; font-size: 1rem; text-transform: none; }
+
+  .player-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 0.4rem; padding: 0.15rem 0; }
+  .player { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
+  .player.away { flex-direction: row-reverse; text-align: right; }
+  .player-name { font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row-sep { text-align: center; color: var(--mpg-border-soft); font-size: 0.82rem; }
+  .replaced-note { display: block; font-size: 0.72rem; color: var(--mpg-text-soft); font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .note-badge {
+    flex: none; width: 1.7rem; height: 1.7rem; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.72rem; font-weight: 700; color: #fff;
+    font-variant-numeric: tabular-nums; position: relative;
+  }
+  .note-badge.note-high { background: var(--mpg-success); }
+  .note-badge.note-mid { background: var(--mpg-warning); }
+  .note-badge.note-low { background: var(--mpg-danger); }
+  .note-badge.note-none { background: var(--mpg-border-soft); color: var(--mpg-text-soft); }
+  /* Aura : QUI a beneficie/subi un effet de bonus dans ce scenario simule --
+     doree = touche par un boost (Zahia/McDo+, quel que soit le camp qui l'a
+     joue), rouge = touche par un nerf (Suarez/Cheat Code) -- pas "mon bonus"
+     vs "bonus adverse" au sens propre, mais dans cette simulation (mon coup
+     + le coup adverse teste), ca revient au meme dans l'immense majorite des
+     cas : mon boost touche mes joueurs, le nerf adverse touche les miens. */
+  .note-badge.aura-boost { box-shadow: 0 0 0 2px var(--mpg-surface, #fff), 0 0 0 4px var(--mpg-warning), 0 0 7px 2px var(--mpg-warning); }
+  .note-badge.aura-nerf { box-shadow: 0 0 0 2px var(--mpg-surface, #fff), 0 0 0 4px var(--mpg-danger), 0 0 7px 2px var(--mpg-danger); }
+  .captain-flag {
+    position: absolute; top: -0.25rem; right: -0.25rem; width: 0.85rem; height: 0.85rem;
+    border-radius: 50%; background: #2b6fd1; color: #fff; font-size: 0.55rem;
+    display: flex; align-items: center; justify-content: center; font-weight: 800;
+    border: 1px solid var(--mpg-surface, #fff);
+  }
+  .goal-flag {
+    position: absolute; bottom: -0.25rem; right: -0.25rem; width: 0.8rem; height: 0.8rem;
+    border-radius: 50%; background: var(--mpg-success); border: 1px solid var(--mpg-surface, #fff);
+  }
+
+  .scorers-block { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.5rem; }
+  .scorer-row { display: flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; min-width: 0; }
+  .scorer-row span:not(.ball):not(.scorer-time) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .scorers-col.away .scorer-row { flex-direction: row-reverse; }
+  .ball { flex: none; width: 0.5rem; height: 0.5rem; border-radius: 50%; }
+  .ball.real { background: var(--mpg-title); }
+  .ball.mpg { background: var(--mpg-success); }
+  .ball.csc { background: var(--mpg-danger); }
+  .ball.real_og { background: var(--mpg-warning); }
+  .scorer-time { color: var(--mpg-text-soft); font-size: 0.75rem; flex: none; }
+  .no-scorer { color: var(--mpg-text-soft); font-size: 0.78rem; font-style: italic; }
+
+  @media (max-width: 640px) {
+    .player-name { font-size: 0.76rem; }
+    .note-badge { width: 1.5rem; height: 1.5rem; font-size: 0.65rem; }
+  }
 
   /* --- Simulateur (port de division.html) --- */
   .sim-card { border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); padding: 1rem 1.25rem; margin: 1rem 0; }
@@ -185,56 +249,144 @@
 
   const POSITION_LABEL = { 1: "G", 2: "D", 3: "M", 4: "A" };
 
-  function playerRowHtml(player) {
-    const mpgTag = player.but_mpg_bonus ? `<span class="mpg-tag mpg-tag-gold">but MPG</span>` : "";
+  // Port de admin/manager.html (retour utilisateur 2026-08-25) -- memes 3
+  // paliers (>=6 vert, >=4.5 or, sinon rouge), meme logique d'aura (BOOST_TAGS
+  // -> doree, NERF_TAGS -> rouge, cf. core/live_scoring.py qui pose deja
+  // p["bonus_tag"] sur chaque joueur touche par un effet simule).
+  function noteClass(note) {
+    if (note === null || note === undefined) return "note-none";
+    if (note >= 6) return "note-high";
+    if (note >= 4.5) return "note-mid";
+    return "note-low";
+  }
+  const BONUS_TAG_LABELS = {
+    boostAllPlayers: "Zahia (+0,5)", boostOnePlayer: "McDo+ (+1)",
+    nerfGoalkeeper: "Suarez (-1)", nerfAllPlayers: "Cheat Code (-0,5)",
+  };
+  const BOOST_TAGS = new Set(["boostAllPlayers", "boostOnePlayer"]);
+  const NERF_TAGS = new Set(["nerfGoalkeeper", "nerfAllPlayers"]);
+
+  function playerBadge(p, isCaptain) {
+    const note = p.effective_note;
+    const cls = noteClass(note);
+    const noteText = fmt(note);
+    const goalFlag = p.but_mpg_bonus ? `<span class="goal-flag" title="But MPG"></span>` : "";
+    const auraCls = BOOST_TAGS.has(p.bonus_tag) ? " aura-boost" : NERF_TAGS.has(p.bonus_tag) ? " aura-nerf" : "";
+    const title = p.bonus_tag ? ` title="${BONUS_TAG_LABELS[p.bonus_tag] || p.bonus_tag}"` : "";
+    return `<div class="note-badge ${cls}${auraCls}"${title}>${noteText}${isCaptain ? `<span class="captain-flag">C</span>` : ""}${goalFlag}</div>`;
+  }
+
+  function benchBadge(p) {
+    const cls = noteClass(p.note_finale);
+    return `<div class="note-badge ${cls}">${fmt(p.note_finale)}</div>`;
+  }
+
+  function playersByPosition(team) {
+    const groups = { 1: [], 2: [], 3: [], 4: [] };
+    Object.entries(team.players || {}).forEach(([playerId, p]) => {
+      if (groups[p.position]) groups[p.position].push({ ...p, playerId });
+    });
+    return groups;
+  }
+
+  function lineAvgText(team, pos) {
+    const avg = (team.line_averages || {})[pos];
+    return avg === null || avg === undefined ? null : fmt(avg);
+  }
+
+  function positionLabelHtml(pos, homeTeam, awayTeam) {
+    const homeAvg = lineAvgText(homeTeam, pos);
+    const awayAvg = lineAvgText(awayTeam, pos);
+    if (homeAvg === null && awayAvg === null) {
+      return `<div class="position-label">${POSITION_LABEL[pos]}</div>`;
+    }
     return `
-      <div class="player-row">
-        <span class="pos">${POSITION_LABEL[player.position] || "?"}</span>
-        <span class="pname">${player.name}</span>
-        <span class="pnote">${fmt(player.effective_note)}</span>
-        ${mpgTag}
+      <div class="position-label line-avg-row">
+        <span class="line-avg">${homeAvg ?? ""}</span>
+        <span>${POSITION_LABEL[pos]} &middot; moy. ligne</span>
+        <span class="line-avg">${awayAvg ?? ""}</span>
       </div>`;
   }
 
-  function benchRowHtml(player) {
-    const enteredTag = player.entered ? `<span class="mpg-tag mpg-tag-neutral">entré</span>` : "";
-    return `
-      <div class="player-row bench-row">
-        <span class="pos">${POSITION_LABEL[player.position] || "?"}</span>
-        <span class="pname">${player.name}</span>
-        <span class="pnote">${fmt(player.note_finale)}</span>
-        ${enteredTag}
-      </div>`;
+  function playersHtml(match) {
+    const homeGroups = playersByPosition(match.home);
+    const awayGroups = playersByPosition(match.away);
+    const homeCaptainId = Object.keys(match.home.players || {}).find(id => match.home.players[id].bonus_capitaine > 0);
+    const awayCaptainId = Object.keys(match.away.players || {}).find(id => match.away.players[id].bonus_capitaine > 0);
+
+    return [1, 2, 3, 4].map(pos => {
+      const homeList = homeGroups[pos], awayList = awayGroups[pos];
+      const maxRows = Math.max(homeList.length, awayList.length);
+      let rows = "";
+      for (let i = 0; i < maxRows; i++) {
+        const hp = homeList[i], ap = awayList[i];
+        rows += `
+          <div class="player-row">
+            <div class="player">
+              ${hp ? playerBadge(hp, hp.playerId === homeCaptainId) : ""}
+              <span class="player-name">${hp ? hp.name : ""}${hp && hp.replaced_starter ? `<span class="replaced-note">&#8618; remplace ${hp.replaced_starter}</span>` : ""}</span>
+            </div>
+            <div class="row-sep">&middot;</div>
+            <div class="player away">
+              ${ap ? playerBadge(ap, ap.playerId === awayCaptainId) : ""}
+              <span class="player-name">${ap ? ap.name : ""}${ap && ap.replaced_starter ? `<span class="replaced-note">&#8618; remplace ${ap.replaced_starter}</span>` : ""}</span>
+            </div>
+          </div>`;
+      }
+      return `<div class="position-block">${positionLabelHtml(pos, match.home, match.away)}${rows}</div>`;
+    }).join("");
   }
 
-  // Feuille de but -- reel (avec minute), MPG (duel de lignes, pas de
-  // minute), CSC reel et CSC Rotaldo (cf. core/live_scoring.py::
-  // apply_line_battles, goal_events).
-  function goalGroupHtml(team) {
+  function benchBlockHtml(home, away) {
+    const homeBench = (home.bench || []).filter(p => !p.entered);
+    const awayBench = (away.bench || []).filter(p => !p.entered);
+    if (!homeBench.length && !awayBench.length) return "";
+    const maxRows = Math.max(homeBench.length, awayBench.length);
+    let rows = "";
+    for (let i = 0; i < maxRows; i++) {
+      const hp = homeBench[i], ap = awayBench[i];
+      rows += `
+        <div class="player-row">
+          <div class="player">${hp ? benchBadge(hp) : ""}<span class="player-name">${hp ? hp.name : ""}</span></div>
+          <div class="row-sep">&middot;</div>
+          <div class="player away">${ap ? benchBadge(ap) : ""}<span class="player-name">${ap ? ap.name : ""}</span></div>
+        </div>`;
+    }
+    return `<div class="position-block"><div class="position-label">Remplaçants</div>${rows}</div>`;
+  }
+
+  // Feuille de but UNIFIEE et triee chronologiquement -- reel, MPG (duel de
+  // lignes), CSC classique (or) et CSC Rotaldo (rouge) se melangent dans la
+  // MEME liste, distingues par la couleur du point (retour utilisateur
+  // 2026-08-25, "les buts mpg/csc/rotaldos se places avec les autres" --
+  // avant ce correctif, 3 paragraphes textuels separes, real_og confondu
+  // avec les buts reels).
+  function scorersHtml(team) {
     const events = team.goal_events || [];
-    const real = events.filter(e => e.type === "real" || e.type === "real_og");
-    const mpg = events.filter(e => e.type === "mpg");
-    const csc = events.filter(e => e.type === "csc");
-    const line = (label, list, withTime) => {
-      if (!list.length) return "";
-      const names = list.map(e => withTime && e.time ? `${e.name} (${e.time})` : e.name).join(", ");
-      return `<div class="goal-group"><strong>${label}</strong> : ${names}</div>`;
-    };
-    const html = line("Buts réels", real, true) + line("Buts MPG", mpg, false) + line("CSC", csc, false);
-    return html || `<div class="goal-group none">Aucun but pour le moment.</div>`;
+    if (!events.length) return `<div class="no-scorer">—</div>`;
+    const sorted = [...events].sort((a, b) => (a.time ? parseInt(a.time) : 999) - (b.time ? parseInt(b.time) : 999));
+    return sorted.map(ev => `
+      <div class="scorer-row">
+        <span class="ball ${ev.type}"></span>
+        <span>${ev.name}</span>
+        ${ev.time ? `<span class="scorer-time">${ev.time}</span>` : ""}
+      </div>`).join("");
   }
 
-  function teamColumnHtml(team, displayName) {
-    const starters = Object.values(team.players || {}).sort((a, b) => a.position - b.position);
-    const bench = team.bench || [];
+  function compositionsHtml(match, homeName, awayName) {
     return `
-      <div class="team-column">
-        <h2>${displayName}</h2>
-        ${starters.map(playerRowHtml).join("")}
-        <h3>Banc</h3>
-        ${bench.length ? bench.map(benchRowHtml).join("") : `<p class="meta">—</p>`}
-        <h3>Buts</h3>
-        ${goalGroupHtml(team)}
+      <div class="lineups-card">
+        <div class="comp-teams">
+          <div class="comp-team-name">${homeName}</div>
+          <div class="comp-team-name away">${awayName}</div>
+        </div>
+        ${playersHtml(match)}
+        ${benchBlockHtml(match.home, match.away)}
+        <div class="position-label">Buts</div>
+        <div class="scorers-block">
+          <div class="scorers-col">${scorersHtml(match.home)}</div>
+          <div class="scorers-col away">${scorersHtml(match.away)}</div>
+        </div>
       </div>`;
   }
 
@@ -298,7 +450,7 @@
     return `
       <p class="meta" style="margin:0.75rem 0 0.25rem;">Chances de résultat (à l'instant T)</p>
       <div style="display:flex; gap:0.25rem;">
-        ${seg("success", odds.win)}${seg("steel", odds.draw)}${seg("danger", odds.loss)}
+        ${seg("success", odds.win)}${seg("gold", odds.draw)}${seg("danger", odds.loss)}
       </div>
       <p class="meta">Victoire ${odds.win}% · Nul ${odds.draw}% · Défaite ${odds.loss}% -- état actuel + 1 poids par type de bonus adverse possible (${odds.total} au total).</p>`;
   }
@@ -334,6 +486,7 @@
 
   let lastBaselineMatch = null;
   let leaguesByCode = {};
+  let homeName = "", awayName = "";
 
   async function runSweep(userId, ownBonus, targetPlayerId, isHome) {
     const sweepEl = document.getElementById("sweep-panel");
@@ -426,6 +579,14 @@
       statusEl.textContent = "";
       lastBaselineMatch = data;
       resultEl.innerHTML = simResultHtml(data, userId);
+      // Rejoue les compositions avec les auras du coup simule (retour
+      // utilisateur 2026-08-25, "on entoure d'une aura... les joueurs
+      // touches par nos propres bonus / un bonus adverse") -- sans ce
+      // reaffichage, #lineups restait fige sur le premier appel (sans
+      // bonus), aucune aura n'apparaissait jamais malgre bonus_tag deja
+      // present dans la reponse (compute_division_live_scores le pose
+      // correctement cote serveur).
+      document.getElementById("lineups").innerHTML = compositionsHtml(data, homeName, awayName);
       const meIsHome = data.home.userId === userId;
       runSweep(userId, ownBonus, targetPlayerId, meIsHome);
     } catch (e) {
@@ -506,12 +667,11 @@
       if (!res.ok) throw new Error(match.error || res.statusText);
 
       statusEl.textContent = "";
-      const homeName = nameFor(match.home.userId);
-      const awayName = nameFor(match.away.userId);
+      homeName = nameFor(match.home.userId);
+      awayName = nameFor(match.away.userId);
 
       document.getElementById("match-header").innerHTML = matchHeaderHtml(match, homeName, awayName, gameWeek);
-      document.getElementById("lineups").innerHTML =
-        teamColumnHtml(match.home, homeName) + teamColumnHtml(match.away, awayName);
+      document.getElementById("lineups").innerHTML = compositionsHtml(match, homeName, awayName);
 
       wireSimulator(match.home.userId, match.away.userId, homeName, awayName, league.players_per_division, anchorUserId);
     } catch (e) {
