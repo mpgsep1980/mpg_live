@@ -70,14 +70,6 @@
      cas : mon boost touche mes joueurs, le nerf adverse touche les miens. */
   .note-badge.aura-boost { box-shadow: 0 0 0 2px var(--mpg-surface, #fff), 0 0 0 4px var(--mpg-warning), 0 0 7px 2px var(--mpg-warning); }
   .note-badge.aura-nerf { box-shadow: 0 0 0 2px var(--mpg-surface, #fff), 0 0 0 4px var(--mpg-danger), 0 0 7px 2px var(--mpg-danger); }
-  /* Point de coherence sur "Joueurs sortis" (retour utilisateur 2026-08-25,
-     "pour que les Managers verifient la coherence des choix effectues") :
-     vert = note bien SOUS le seuil configure (remplacement justifie), rouge
-     = note au-dessus du seuil malgre le remplacement (incoherence a
-     verifier). Meme mecanique visuelle que l'aura (anneau), semantique
-     differente -- sans ambiguite, ce n'est jamais la meme section de page. */
-  .note-badge.check-ok { box-shadow: 0 0 0 2px var(--mpg-surface, #fff), 0 0 0 4px var(--mpg-success), 0 0 5px 1px var(--mpg-success); }
-  .note-badge.check-bad { box-shadow: 0 0 0 2px var(--mpg-surface, #fff), 0 0 0 4px var(--mpg-danger), 0 0 5px 1px var(--mpg-danger); }
   .captain-flag {
     position: absolute; top: -0.25rem; right: -0.25rem; width: 0.85rem; height: 0.85rem;
     border-radius: 50%; background: #2b6fd1; color: #fff; font-size: 0.55rem;
@@ -93,11 +85,20 @@
   .scorer-row { display: flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; min-width: 0; }
   .scorer-row span:not(.ball):not(.scorer-time) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .scorers-col.away .scorer-row { flex-direction: row-reverse; }
-  .ball { flex: none; width: 0.5rem; height: 0.5rem; border-radius: 50%; }
+  .ball {
+    flex: none; display: inline-block; vertical-align: middle;
+    width: 0.5rem; height: 0.5rem; border-radius: 50%; margin: 0 0.15rem;
+  }
   .ball.real { background: var(--mpg-title); }
   .ball.mpg { background: var(--mpg-success); }
   .ball.csc { background: var(--mpg-danger); }
   .ball.real_og { background: var(--mpg-warning); }
+  /* Point de coherence sur "Joueurs sortis" (retour utilisateur 2026-08-25) :
+     accole au SEUIL affiche (pas a la note du joueur sorti) -- vert = note
+     bien sous ce seuil (remplacement justifie), rouge = incoherence a
+     verifier. */
+  .ball.check-ok { background: var(--mpg-success); }
+  .ball.check-bad { background: var(--mpg-danger); }
   .scorer-time { color: var(--mpg-text-soft); font-size: 0.75rem; flex: none; }
   .no-scorer { color: var(--mpg-text-soft); font-size: 0.78rem; font-style: italic; }
 
@@ -362,18 +363,7 @@
   const OUT_REASON_LABELS = { tactique: "tactique", obligatoire: "obligatoire" };
 
   function outBadge(p) {
-    // Point de coherence (retour utilisateur 2026-08-25, "pour que les
-    // Managers verifient la coherence des choix effectues") : entoure la
-    // note d'un anneau vert si elle est bien SOUS le seuil configure (le
-    // remplacement tactique est justifie), rouge si elle ne l'est pas
-    // (incoherence a verifier -- ne devrait normalement pas arriver).
-    // seuil_configure absent (remplacement "obligatoire", ou note pas
-    // encore connue) : pas d'anneau, rien a verifier.
-    let checkCls = "";
-    if (p.seuil_configure !== undefined && p.seuil_configure !== null && p.note_finale !== null && p.note_finale !== undefined) {
-      checkCls = p.note_finale < p.seuil_configure ? " check-ok" : " check-bad";
-    }
-    return `<div class="note-badge ${noteClass(p.note_finale)}${checkCls}">${fmt(p.note_finale)}</div>`;
+    return `<div class="note-badge ${noteClass(p.note_finale)}">${fmt(p.note_finale)}</div>`;
   }
 
   function outRowHtml(p) {
@@ -385,8 +375,23 @@
     // (qui est la note COMPAREE a ce seuil, pas le seuil lui-meme). Absent
     // pour un remplacement "obligatoire" (aucun seuil, declenche par une
     // absence de note).
-    const threshold = p.seuil_configure !== undefined && p.seuil_configure !== null ? ` <${fmt(p.seuil_configure)}` : "";
-    const reason = (OUT_REASON_LABELS[p.reason] || p.reason) + threshold;
+    // Point de coherence (retour utilisateur 2026-08-25, "je voulais le vert
+    // autour du seuil de remplacement pas autour de la note du remplace") :
+    // un point colore ACCOLE AU SEUIL lui-meme (pas a la note du joueur
+    // sorti) -- vert si la note est bien SOUS ce seuil (remplacement
+    // justifie), rouge sinon (incoherence a verifier -- ne devrait
+    // normalement pas arriver). Rien si le seuil ou la note n'est pas
+    // connu(e) (remplacement "obligatoire", ou note pas encore stabilisee).
+    let thresholdDot = "";
+    let threshold = "";
+    if (p.seuil_configure !== undefined && p.seuil_configure !== null) {
+      threshold = ` <${fmt(p.seuil_configure)}`;
+      if (p.note_finale !== null && p.note_finale !== undefined) {
+        const ok = p.note_finale < p.seuil_configure;
+        thresholdDot = `<span class="ball ${ok ? "check-ok" : "check-bad"}" title="${ok ? "Note sous le seuil : remplacement justifie" : "Note au-dessus du seuil malgre le remplacement : a verifier"}"></span>`;
+      }
+    }
+    const reason = (OUT_REASON_LABELS[p.reason] || p.reason) + threshold + thresholdDot;
     // note_avec_bonus/note_seuil (retour utilisateur 2026-08-25, "leur note
     // et leur seuil de remplacement") : avec une simulation de bonus active
     // (siens McDo+/Zahia OU subis Suarez/Cheat Code), 2 notes distinctes --
