@@ -231,8 +231,14 @@
     return list.map(p => `<option value="${p.id}"${p.id === selectedId ? " selected" : ""}>${p.name}</option>`).join("");
   }
   function targetSelectHtml(myTeam, selectedId, hidden) {
+    // Exclut les remplacants entres (replaced_starter renseigne) -- retour
+    // utilisateur 2026-08-25, meme correctif que simulate_api/app.py::
+    // live_scenario_sweep (cote "Bonus adverse") : un manager choisit sa
+    // cible McDo+ AVANT le coup d'envoi, seul le titulaire DECLARE a ce
+    // moment-la est une cible plausible. Le titulaire d'origine reste
+    // teste via outPlayers ci-dessous (is_default_rating).
     const players = Object.entries(myTeam.players || {})
-      .filter(([, p]) => p.position !== 1)
+      .filter(([, p]) => p.position !== 1 && !p.replaced_starter)
       .map(([id, p]) => ({ id, name: p.name }));
     const outPlayers = (myTeam.out || [])
       .filter(p => p.is_default_rating)
