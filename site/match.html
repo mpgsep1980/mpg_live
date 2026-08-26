@@ -89,10 +89,15 @@
     flex: none; display: inline-block; vertical-align: middle;
     width: 0.5rem; height: 0.5rem; border-radius: 50%; margin: 0 0.15rem;
   }
+  /* Points de but (retour utilisateur 2026-08-25, confirme le mapping) :
+     noir = but normal (reel), vert = but MPG (duel de lignes), rouge = CSC
+     Rotaldo, jaune = CSC classique -- #e0b400 (pas --mpg-warning, trop
+     ambre/orange pour lire comme "jaune") reprend exactement la teinte de
+     la reference admin/manager.html (--ball-csc-classique). */
   .ball.real { background: var(--mpg-title); }
   .ball.mpg { background: var(--mpg-success); }
   .ball.csc { background: var(--mpg-danger); }
-  .ball.real_og { background: var(--mpg-warning); }
+  .ball.real_og { background: #e0b400; }
   .scorer-time { color: var(--mpg-text-soft); font-size: 0.75rem; flex: none; }
   /* Badge de seuil sur "Joueurs sortis" (retour utilisateur 2026-08-25,
      "je voyais ca en realite... avec le signe '<' / memes seuils de
