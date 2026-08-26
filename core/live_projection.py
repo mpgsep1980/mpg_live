@@ -389,38 +389,95 @@ def resolve_league_wide_ranks(rows_by_division: dict[int, list[dict]], match_bon
     1 point pour le detenteur pendant qu'une journee est encore live,
     corrige des qu'elle est archivee."""
     mb_enabled = (match_bonus_cfg or {}).get("enabled", {})
-    entries = []
-    for division_rows in rows_by_division.values():
-        for row in division_rows:
-            live_counter_total = sum(row.get(k, 0) for k in LIVE_COUNTER_KEYS if mb_enabled.get(k, True))
-            grotaldo_term = row.get("grotaldo", 0) if mb_enabled.get("grotaldo", True) else 0
-            precious_term = row.get("_precious", 0) if mb_enabled.get("precious", True) else 0
-            points_ligue = round(
-                row.get("points_pond", 0.0)
-                + row.get("pichichi", 0) + row.get("mur", 0)
-                + row.get("_bonus_champion", 0) + row.get("_bonus_podium", 0)
-                + live_counter_total
-                + precious_term - grotaldo_term,
-                4,
-            )
-            diff = (row.get("buts_pour") or 0) - (row.get("buts_contre") or 0)
-            entries.append((
-                row["userId"], points_ligue, diff, row.get("buts_pour") or 0,
-                row.get("Ycards", 0), row.get("Rcards", 0),
-            ))
+    entries = [
+        _league_wide_entry(row, mb_enabled)
+        for division_rows in rows_by_division.values()
+        for row in division_rows
+    ]
+    return _rank_league_wide_entries(entries)
 
-    # Depart les egalites (frequent en debut de saison -- retour utilisateur
-    # 2026-08-24, trouve via un Podium/Super_Podium visiblement faux : 4
-    # managers a egalite exacte de points_ligue/diff/attaque partaient dans
-    # un ordre arbitraire, dependant de l'ordre d'iteration des divisions,
-    # faute de tiebreak ici). Meme 6 criteres que le tri du Super Classement
-    # officiel (Super_Classement_General_V2.ipynb cellule 3 : points, diff,
-    # buts_pour, buts_contre, Ycards, Rcards -- moins de cartons gagne).
-    entries.sort(key=lambda e: (-e[1], -e[2], -e[3], e[4], e[5]))
+
+def _league_wide_entry(row: dict, mb_enabled: dict) -> tuple:
+    """Un manager -> (userId, points_ligue, diff, buts_pour, Ycards, Rcards),
+    le tuple de tri utilise par resolve_league_wide_ranks -- extrait pour
+    etre reutilise par resolve_league_wide_ranks_for_simulation (retour
+    utilisateur 2026-08-26, "s'assurer de la simulation des classements") sur
+    UNE division fraichement recalculee, sans dupliquer la formule."""
+    live_counter_total = sum(row.get(k, 0) for k in LIVE_COUNTER_KEYS if mb_enabled.get(k, True))
+    grotaldo_term = row.get("grotaldo", 0) if mb_enabled.get("grotaldo", True) else 0
+    precious_term = row.get("_precious", 0) if mb_enabled.get("precious", True) else 0
+    points_ligue = round(
+        row.get("points_pond", 0.0)
+        + row.get("pichichi", 0) + row.get("mur", 0)
+        + row.get("_bonus_champion", 0) + row.get("_bonus_podium", 0)
+        + live_counter_total
+        + precious_term - grotaldo_term,
+        4,
+    )
+    diff = (row.get("buts_pour") or 0) - (row.get("buts_contre") or 0)
+    return (row["userId"], points_ligue, diff, row.get("buts_pour") or 0, row.get("Ycards", 0), row.get("Rcards", 0))
+
+
+def _rank_league_wide_entries(entries: list[tuple]) -> dict[str, dict]:
+    """Trie + range une liste de tuples _league_wide_entry -- factorise pour
+    etre partage par resolve_league_wide_ranks et sa variante simulation.
+
+    Depart les egalites (frequent en debut de saison -- retour utilisateur
+    2026-08-24, trouve via un Podium/Super_Podium visiblement faux : 4
+    managers a egalite exacte de points_ligue/diff/attaque partaient dans un
+    ordre arbitraire, dependant de l'ordre d'iteration des divisions, faute
+    de tiebreak ici). Meme 6 criteres que le tri du Super Classement officiel
+    (Super_Classement_General_V2.ipynb cellule 3 : points, diff, buts_pour,
+    buts_contre, Ycards, Rcards -- moins de cartons gagne)."""
+    entries = sorted(entries, key=lambda e: (-e[1], -e[2], -e[3], e[4], e[5]))
     return {
         uid: {"rang_ligue": i, "points_ligue": points_ligue}
         for i, (uid, points_ligue, *_rest) in enumerate(entries, start=1)
     }
+
+
+def resolve_league_wide_ranks_for_simulation(
+    sb, league: dict, own_division: int, own_rows: list[dict], match_bonus_cfg: dict,
+) -> dict[str, dict]:
+    """Variante de resolve_league_wide_ranks pour le simulateur "Mon Bonus"
+    (retour utilisateur 2026-08-26, "s'assurer de la simulation des
+    classements ... en prenant en compte les resultats de tous les matchs en
+    cours") : `own_rows` (sortie fraiche de resolve_division_rows, avec le
+    scenario hypothetique deja applique) remplace la division du manager,
+    tandis que TOUTES LES AUTRES divisions de la ligue -- y compris celles
+    dont un match est EN CE MOMENT en cours ailleurs dans la meme ligue --
+    sont lues telles quelles depuis division_classement_live (la derniere
+    ligne ecrite par le tick live en cours de scripts/live_job.py, donc deja
+    a jour des resultats de tous les autres matchs en cours de cette ligue).
+    Aucune ecriture Supabase ici -- purement un calcul hypothetique renvoye
+    au navigateur, comme le reste de simulate_api/app.py.
+
+    LIMITE CONNUE v1 : division_classement_live.data ne stocke pas
+    Ycards/Rcards (cf. PUBLIC_ROW_FIELDS, jamais publies) -- les entrees des
+    AUTRES divisions retombent donc a Ycards=Rcards=0 pour le tiebreak, alors
+    que own_rows (fraichement recalculee) porte les vraies valeurs. Impact
+    seulement en cas d'egalite exacte points_ligue/diff/buts_pour ENTRE
+    divisions differentes, un cas deja marginal (cf. commentaire de
+    _rank_rows sur le meme repli)."""
+    mb_enabled = (match_bonus_cfg or {}).get("enabled", {})
+    entries = [_league_wide_entry(row, mb_enabled) for row in own_rows]
+
+    other_rows = (
+        sb.table("division_classement_live").select("division,data")
+        .eq("league_code", league["code"]).eq("season", league["seasonSearch"])
+        .neq("division", own_division)
+        .execute().data
+    )
+    for row in other_rows or []:
+        for entry in row.get("data") or []:
+            uid = entry.get("userId")
+            if not uid:
+                continue
+            points_ligue = entry.get("points_ligue") or 0
+            diff = (entry.get("buts_pour") or 0) - (entry.get("buts_contre") or 0)
+            entries.append((uid, points_ligue, diff, entry.get("buts_pour") or 0, 0, 0))
+
+    return _rank_league_wide_entries(entries)
 
 
 def finalize_division_data(division_rows: list[dict], league_ranks: dict[str, dict],
@@ -450,7 +507,7 @@ def finalize_division_data(division_rows: list[dict], league_ranks: dict[str, di
     return out
 
 
-def compute_super_classement(sb) -> list[dict]:
+def compute_super_classement(sb, override_by_division: dict[tuple[str, int], list[dict]] | None = None) -> list[dict]:
     """Classement croise TOUTES LIGUES CONFONDUES -- version volontairement
     reduite du Super Classement cote mpg_app (retour utilisateur 2026-08-23,
     "on y va etape par etape" -- avance par etapes livrables plutot que de
@@ -508,7 +565,16 @@ def compute_super_classement(sb) -> list[dict]:
 
     `teamName` : celui de la ligue ou ce manager a le plus de points_ligue
     (un manager peut avoir un nom d'equipe different par ligue, aucun nom
-    "canonique" ici -- meilleur choix disponible sans registre managers)."""
+    "canonique" ici -- meilleur choix disponible sans registre managers).
+
+    `override_by_division` : {(league_code, division): data} pour le
+    simulateur "Mon Bonus" (retour utilisateur 2026-08-26) -- substitue la
+    `data` d'UNE division (typiquement celle du manager, avec le scenario
+    hypothetique deja applique via resolve_division_rows) tout en lisant
+    toutes les autres divisions -- de CETTE ligue et de toutes les autres --
+    telles quelles depuis Supabase, donc deja a jour des resultats de tous
+    les autres matchs en cours au meme instant. None (par defaut) = aucun
+    changement, comportement du tick live inchange."""
     from core.general_bonus import apply_general_bonuses
     from core.multi_boss import division_won_from_boss_saison, multi_boss_points_for
 
@@ -518,6 +584,12 @@ def compute_super_classement(sb) -> list[dict]:
 
     res = sb.table("division_classement_live").select("league_code,division,data,season").execute()
     rows = res.data or []
+    if override_by_division:
+        rows = [
+            {**row, "data": override_by_division[(row["league_code"], row["division"])]}
+            if (row["league_code"], row["division"]) in override_by_division else row
+            for row in rows
+        ]
 
     SUM_FIELDS = (
         "score+", "score-", "victory", "draw", "defeat",

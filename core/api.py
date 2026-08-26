@@ -63,6 +63,18 @@ def get_dashboard(token: str = None) -> dict:
     return r.json()
 
 
+def get_live_total_divisions(short_id: str, token: str = None) -> int:
+    """totalDivisions REEL cote /dashboard pour une ligue -- peut diverger
+    d'un calcul local a partir de playersNumber/playersPerDivision. Extrait
+    de scripts/live_job.py (retour utilisateur 2026-08-26 : simulate_api/
+    app.py en a desormais aussi besoin, pour resoudre resolve_division_rows
+    sans dupliquer cette recherche une deuxieme fois)."""
+    for tile in get_dashboard(token).get("orderedTiles", []):
+        if tile.get("shortId") == short_id and tile.get("totalDivisions"):
+            return tile["totalDivisions"]
+    raise RuntimeError(f"totalDivisions introuvable pour {short_id} sur /dashboard.")
+
+
 def get_championship_ids(token: str = None) -> dict[str, int]:
     """{shortId: championshipId} pour chaque tuile de type "league" du
     dashboard -- le dashboard peut contenir d'autres types de tuiles (ex.

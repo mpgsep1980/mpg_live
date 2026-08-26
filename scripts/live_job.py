@@ -37,7 +37,7 @@ from core.api import (
     get_nearest_game_weeks,
     get_division_matches,
     get_championship_match,
-    get_dashboard,
+    get_live_total_divisions,
     get_division_team_names,
 )
 from core.live_scoring import compute_division_live_scores, collect_real_match_ids, FINISHED_MATCH_PERIODS
@@ -46,7 +46,7 @@ from core.live_projection import (
     league_setup, resolve_division_rows, resolve_league_wide_ranks, finalize_division_data, compute_super_classement,
     refresh_division_classement_from_archive,
 )
-from core.league import current_real_season_start_year, get_match_bonus_config
+from core.league import current_real_season_start_year, get_match_bonus_config, league_from_supabase_row
 
 
 def supabase_client() -> Client:
@@ -59,34 +59,11 @@ def get_all_leagues(sb: Client) -> list[dict]:
     camelCase : nom/code/seasonSearch/scoring/...) que celle attendue par
     core/league.py et core/live_projection.py, portes depuis mpg_app."""
     rows = sb.table("leagues").select("*").execute().data
-    return [
-        {
-            "nom": r["nom"],
-            "code": r["code"],
-            "seasonSearch": r["season_search"],
-            "seasonStart": r["season_start"],
-            "championshipId": r["championship_id"],
-            "playersNumber": r["players_number"],
-            "playersPerDivision": r["players_per_division"],
-            "poolGameweeks": r["pool_gameweeks"],
-            "Div_A_Gameweeks": r["div_a_gameweeks"],
-            "scoring": r.get("scoring") or {},
-        }
-        for r in rows
-    ]
+    return [league_from_supabase_row(r) for r in rows]
 
 
 def parse_iso(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
-
-
-def get_live_total_divisions(short_id: str) -> int:
-    """totalDivisions REEL cote /dashboard -- meme raison que cote mpg_app
-    (peut diverger d'un calcul local a partir de playersPerDivision)."""
-    for tile in get_dashboard().get("orderedTiles", []):
-        if tile.get("shortId") == short_id and tile.get("totalDivisions"):
-            return tile["totalDivisions"]
-    raise RuntimeError(f"totalDivisions introuvable pour {short_id} sur /dashboard.")
 
 
 def poll_league(sb: Client, league: dict, game_week: int) -> None:

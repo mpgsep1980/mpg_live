@@ -67,3 +67,24 @@ def get_match_bonus_config(league: dict) -> dict:
     cfg = dict(DEFAULT_MATCH_BONUS_CONFIG)
     cfg.update(league.get("scoring", {}).get("matchBonuses", {}))
     return cfg
+
+
+def league_from_supabase_row(row: dict) -> dict:
+    """Mappe une ligne brute de la table Supabase `leagues` (colonnes
+    snake_case) vers le dict `league` camelCase attendu par ce module et par
+    core/live_projection.py -- extrait de scripts/live_job.py::get_all_leagues
+    (retour utilisateur 2026-08-26 : simulate_api/app.py a besoin de la MEME
+    forme pour resoudre le classement d'UNE ligue via son short_id, sans
+    dupliquer le mapping une deuxieme fois)."""
+    return {
+        "nom": row["nom"],
+        "code": row["code"],
+        "seasonSearch": row["season_search"],
+        "seasonStart": row["season_start"],
+        "championshipId": row["championship_id"],
+        "playersNumber": row["players_number"],
+        "playersPerDivision": row["players_per_division"],
+        "poolGameweeks": row["pool_gameweeks"],
+        "Div_A_Gameweeks": row["div_a_gameweeks"],
+        "scoring": row.get("scoring") or {},
+    }

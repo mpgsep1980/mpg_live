@@ -134,6 +134,15 @@
   .sim-result .side.me .total { color: var(--mpg-action); }
   .sim-result .total { font-size: 1.6rem; font-weight: 700; }
   .sim-result .label { font-size: 0.75rem; color: var(--mpg-text-soft); }
+
+  .sim-classement { display: flex; gap: 1.75rem; flex-wrap: wrap; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px dashed var(--mpg-border-soft); }
+  .sim-classement .item { text-align: center; min-width: 6rem; }
+  .sim-classement .item .rang { font-size: 1.3rem; font-weight: 700; }
+  .sim-classement .item .rang .of { font-size: 0.8rem; font-weight: 400; color: var(--mpg-text-soft); }
+  .sim-classement .item .rang .delta { font-size: 0.72rem; font-weight: 600; margin-left: 0.2rem; }
+  .sim-classement .item .rang .delta.up { color: var(--mpg-success); }
+  .sim-classement .item .rang .delta.down { color: var(--mpg-danger); }
+  .sim-classement .item .label { font-size: 0.72rem; color: var(--mpg-text-soft); text-transform: uppercase; letter-spacing: 0.02em; }
   .sweep-bad { color: var(--mpg-danger); font-weight: 600; }
   .sweep-baseline td { font-weight: 700; background: var(--mpg-action-soft, rgba(0,0,0,0.03)); border-bottom: 2px solid var(--mpg-border-soft); }
 
@@ -538,6 +547,59 @@
       </div>`;
   }
 
+  // Impact projeté sur le classement (division/ligue/Super Classement) du
+  // scénario "Mon Bonus" en cours -- retour utilisateur 2026-08-26,
+  // "s'assurer de la simulation des classements ... en prenant en compte
+  // les résultats de tous les matchs en cours dans les différents
+  // championnats" : /simulate-classement recalcule la division du manager
+  // avec son coup hypothétique tout en lisant les AUTRES matchs/divisions/
+  // ligues tels qu'écrits par le dernier tick live (déjà à jour des
+  // résultats de tous les autres matchs en cours au même instant).
+  function rangDeltaHtml(current, baseline) {
+    if (!baseline || current.rang === baseline.rang) return "";
+    const delta = baseline.rang - current.rang; // positif = amélioration (rang plus petit)
+    const cls = delta > 0 ? "up" : "down";
+    return ` <span class="delta ${cls}">${delta > 0 ? "▲+" : "▼"}${delta}</span>`;
+  }
+  function classementItemHtml(label, current, baseline) {
+    if (!current) return `<div class="item"><div class="rang">—</div><div class="label">${label}</div></div>`;
+    return `
+      <div class="item">
+        <div class="rang">${current.rang}<span class="of">/${current.size}</span>${rangDeltaHtml(current, baseline)}</div>
+        <div class="label">${label} · ${fmt(current.points)} pts</div>
+      </div>`;
+  }
+  function classementHtml(data, baseline) {
+    return `
+      <div class="sim-classement">
+        ${classementItemHtml("Division", data.division, baseline && baseline.division)}
+        ${classementItemHtml("Ligue", data.league, baseline && baseline.league)}
+        ${data.superClassement ? classementItemHtml("Super Classement", data.superClassement, baseline && baseline.superClassement) : ""}
+      </div>`;
+  }
+  async function loadClassement(userId, ownBonus, targetPlayerId) {
+    const url = new URL(`${SIMULATE_API_BASE}/simulate-classement`);
+    url.searchParams.set("shortId", leagueCode);
+    url.searchParams.set("season", leaguesByCode[leagueCode].season_search);
+    url.searchParams.set("division", division);
+    url.searchParams.set("gameweek", gameWeek);
+    url.searchParams.set("userId", userId);
+    if (ownBonus) url.searchParams.set("ownBonus", ownBonus);
+    if (targetPlayerId) url.searchParams.set("targetPlayerId", targetPlayerId);
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    return data;
+  }
+  function refreshClassement(userId, ownBonus, targetPlayerId, baseline) {
+    const el = document.getElementById("sim-classement");
+    if (!el) return;
+    el.innerHTML = `<p class="meta">Classement projeté : calcul en cours...</p>`;
+    loadClassement(userId, ownBonus, targetPlayerId)
+      .then(data => { el.innerHTML = classementHtml(data, baseline); return data; })
+      .catch(e => { el.innerHTML = `<p class="status-msg err">Classement projeté indisponible (${e.message}).</p>`; });
+  }
+
   function classifyResult(myScore, theirScore) {
     if (myScore > theirScore) return "win";
     if (myScore < theirScore) return "loss";
@@ -620,6 +682,7 @@
   }
 
   let lastBaselineMatch = null;
+  let lastClassementBaseline = null;
   let leaguesByCode = {};
   let homeName = "", awayName = "";
 
@@ -692,6 +755,21 @@
       const meIsHome = data.home.userId === userId;
       document.getElementById("sweep-panel").innerHTML = "";
       runSweep(userId, "", "", meIsHome);
+
+      // Classement REEL en cours (aucun bonus hypothétique) -- sert de
+      // référence pour les ▲/▼ affichés dès qu'un coup est ensuite choisi
+      // (cf. simulateBonus). Non bloquant : le reste du simulateur ne doit
+      // jamais dépendre de ce fetch supplémentaire.
+      const classementEl = document.getElementById("sim-classement");
+      if (classementEl) classementEl.innerHTML = `<p class="meta">Classement projeté : calcul en cours...</p>`;
+      loadClassement(userId, "", "")
+        .then(data => {
+          lastClassementBaseline = data;
+          if (classementEl) classementEl.innerHTML = classementHtml(data, null);
+        })
+        .catch(e => {
+          if (classementEl) classementEl.innerHTML = `<p class="status-msg err">Classement projeté indisponible (${e.message}).</p>`;
+        });
     } catch (e) {
       statusEl.textContent = "Simulateur indisponible pour le moment (" + e.message + "). Le service met parfois jusqu'à 30s à se réveiller.";
       statusEl.className = "status-msg err";
@@ -748,6 +826,7 @@
       document.getElementById("lineups").innerHTML = compositionsHtml(data, homeName, awayName);
       const meIsHome = data.home.userId === userId;
       runSweep(userId, ownBonus, targetPlayerId, meIsHome);
+      refreshClassement(userId, ownBonus, targetPlayerId, lastClassementBaseline);
     } catch (e) {
       statusEl.textContent = "Simulation indisponible pour le moment (" + e.message + ").";
       statusEl.className = "status-msg err";
@@ -770,6 +849,7 @@
         </div>
         <div id="sim-status" class="status-msg">Chargement des compositions...</div>
         <div id="sim-result"></div>
+        <div id="sim-classement"></div>
         <div id="sweep-panel"></div>
       </div>`;
   }

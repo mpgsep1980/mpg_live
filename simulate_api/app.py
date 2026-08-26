@@ -38,13 +38,35 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from flask import Flask, jsonify, request
+from supabase import create_client
 
-from core.api import get_division_matches, get_championship_match, get_division_info
+from core.api import (
+    get_division_matches, get_championship_match, get_division_info,
+    get_live_total_divisions, get_division_team_names,
+)
 from core.live_scoring import (
     compute_division_live_scores, collect_real_match_ids, VALID_BONUSES, bonus_available_for_division_size,
 )
+from core.league import league_from_supabase_row
+from core.live_projection import (
+    league_setup, resolve_division_rows, resolve_league_wide_ranks_for_simulation,
+    finalize_division_data, compute_super_classement,
+)
 
 app = Flask(__name__)
+
+# Cle anonyme -- deja publique cote client (embarquee telle quelle dans
+# CHAQUE page de site/, ex. site/division.html) : la reutiliser ici cote
+# serveur n'expose rien de plus, RLS restreint deja l'ecriture au seul role
+# service_role (cf. db/schema.sql). Lecture seule (jamais d'ecriture ici) --
+# retour utilisateur 2026-08-26, "s'assurer de la simulation des classements
+# ... en prenant en compte les resultats de tous les matchs en cours" :
+# /simulate-classement a besoin de lire leagues/league_classement_archive/
+# division_classement_live pour situer le scenario hypothetique du manager
+# parmi le reste des ligues suivies.
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://zvmngpoogwjiknqrkjky.supabase.co")
+SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "sb_publishable_YhAD0_spZJF58Dt_TTQplQ_VrFSKRK8")
+_supabase = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 
 @app.after_request
@@ -143,6 +165,147 @@ def _load_match_context(args, require_own_bonus_valid: bool = True):
         "div_match": div_match, "user_id": user_id, "opponent_user_id": opponent_user_id,
         "division_size": division_size, "real_matches_by_id": real_matches_by_id, "own_bonus": own_bonus,
     }
+
+
+def _load_division_context(args):
+    """Variante de _load_match_context pour /simulate-classement : conserve
+    TOUS les matchs de la division (pas seulement celui du manager) et fetch
+    les vrais matchs de TOUTE la division -- resolve_division_rows a besoin
+    du resultat des AUTRES matchs de la division, pas seulement du sien,
+    pour recalculer un classement de division complet (retour utilisateur
+    2026-08-26, "en prenant en compte les resultats de tous les matchs en
+    cours"). Leve _BadRequest (jamais None), meme contrat que
+    _load_match_context."""
+    short_id = args.get("shortId")
+    season = args.get("season")
+    division = args.get("division")
+    game_week = args.get("gameweek")
+    user_id = args.get("userId")
+    own_bonus = args.get("ownBonus") or None
+    opponent_bonus = args.get("opponentBonus") or None
+    target_player_id = args.get("targetPlayerId") or None
+
+    if not all([short_id, season, division, game_week, user_id]):
+        raise _BadRequest("parametres manquants")
+    if own_bonus and own_bonus not in VALID_BONUSES:
+        raise _BadRequest(f"Bonus inconnu ou pas encore supporte en live : {own_bonus}")
+    if opponent_bonus and opponent_bonus not in VALID_BONUSES:
+        raise _BadRequest(f"Bonus inconnu ou pas encore supporte en live : {opponent_bonus}")
+
+    season, division, game_week = int(season), int(division), int(game_week)
+
+    division_matches = get_division_matches(short_id, season, division, game_week)
+    _ensure_user_ids(division_matches, short_id, season, division)
+    div_match = next(
+        (m for m in division_matches if user_id in (m["home"].get("userId"), m["away"].get("userId"))), None,
+    )
+    if not div_match:
+        raise _BadRequest("Match introuvable pour ce manager dans cette division", 404)
+    if not div_match["home"].get("players") or not div_match["away"].get("players"):
+        raise _BadRequest(
+            "Compositions pas encore disponibles pour cette journee -- reessaie juste avant le coup d'envoi.",
+            409,
+        )
+    opponent_user_id = (
+        div_match["away"]["userId"] if div_match["home"].get("userId") == user_id else div_match["home"]["userId"]
+    )
+
+    division_size = len(division_matches) * 2
+    if own_bonus and not bonus_available_for_division_size(own_bonus, division_size):
+        raise _BadRequest(f"{own_bonus} n'existe pas pour une division de {division_size} (tableau officiel MPG)")
+    if opponent_bonus and not bonus_available_for_division_size(opponent_bonus, division_size):
+        raise _BadRequest(f"{opponent_bonus} n'existe pas pour une division de {division_size} (tableau officiel MPG)")
+
+    match_ids = collect_real_match_ids(division_matches)
+    real_matches_by_id = {mid: get_championship_match(mid) for mid in match_ids}
+
+    league_row = _supabase.table("leagues").select("*").eq("code", short_id).limit(1).execute().data
+    if not league_row:
+        raise _BadRequest(f"Ligue {short_id} introuvable en base (jamais suivie par mpg_live)", 404)
+    league = league_from_supabase_row(league_row[0])
+
+    return {
+        "short_id": short_id, "season": season, "division": division, "game_week": game_week,
+        "division_matches": division_matches, "real_matches_by_id": real_matches_by_id,
+        "user_id": user_id, "opponent_user_id": opponent_user_id,
+        "own_bonus": own_bonus, "opponent_bonus": opponent_bonus, "target_player_id": target_player_id,
+        "league": league,
+    }
+
+
+@app.route("/simulate-classement", methods=["GET", "OPTIONS"])
+def simulate_classement():
+    """Impact PROJETE sur le classement (division/rang de ligue/Super
+    Classement) du scenario hypothetique deja teste par /simulate-bonus --
+    retour utilisateur 2026-08-26, "s'assurer de la simulation des
+    classements (divisions/ligues/Super Classement) en prenant en compte les
+    resultats de tous les matchs en cours dans les differents championnats".
+    Prolonge /simulate-bonus (qui ne renvoyait que le score du match testé)
+    sans le remplacer -- memes parametres (ownBonus/targetPlayerId/
+    opponentBonus optionnels, absents = classement REEL en cours, aucun
+    scenario).
+
+    Recalcule EN MEMOIRE la division entiere du manager (resolve_division_rows,
+    memes fonctions que scripts/live_job.py) avec son match hypothetique,
+    puis situe ce resultat parmi TOUTES LES AUTRES divisions/ligues telles
+    qu'ecrites par le DERNIER tick live (resolve_league_wide_ranks_for_
+    simulation / compute_super_classement override) -- donc deja a jour des
+    resultats de tous les autres matchs en cours au meme instant, dans cette
+    ligue comme dans les autres. N'ecrit jamais rien sur Supabase (purement
+    un calcul hypothetique renvoye au navigateur)."""
+    if request.method == "OPTIONS":
+        return "", 204
+
+    try:
+        ctx = _load_division_context(request.args)
+    except _BadRequest as e:
+        return jsonify({"error": e.message}), e.status
+
+    bonus_choices = {}
+    if ctx["own_bonus"]:
+        bonus_choices[ctx["user_id"]] = {"bonus": ctx["own_bonus"], "targetPlayerId": ctx["target_player_id"]}
+    if ctx["opponent_bonus"]:
+        bonus_choices[ctx["opponent_user_id"]] = {"bonus": ctx["opponent_bonus"], "targetPlayerId": None}
+
+    results = compute_division_live_scores(ctx["division_matches"], ctx["real_matches_by_id"], bonus_choices)
+
+    league, division, game_week = ctx["league"], ctx["division"], ctx["game_week"]
+    try:
+        total_divisions = get_live_total_divisions(ctx["short_id"])
+    except Exception:
+        return jsonify({"error": "totalDivisions introuvable sur /dashboard MPG -- reessaie plus tard."}), 502
+
+    setup = league_setup(_supabase, league, [division], game_week)
+    own_rows, _is_live = resolve_division_rows(league, division, results, game_week, total_divisions, setup)
+
+    try:
+        team_names = get_division_team_names(ctx["short_id"], ctx["season"], division)
+    except Exception:
+        team_names = {}
+
+    league_ranks = resolve_league_wide_ranks_for_simulation(
+        _supabase, league, division, own_rows, setup["match_bonus_cfg"],
+    )
+    own_division_data = finalize_division_data(own_rows, league_ranks, team_names)
+
+    my_entry = next((e for e in own_division_data if e["userId"] == ctx["user_id"]), None)
+    if my_entry is None:
+        return jsonify({"error": "Impossible de resoudre le manager dans le classement recalcule."}), 500
+
+    ranked_super = compute_super_classement(_supabase, {(ctx["short_id"], division): own_division_data})
+    my_super = next((r for r in ranked_super if r["userId"] == ctx["user_id"]), None)
+
+    return jsonify({
+        "division": {"rang": my_entry["rang"], "points": my_entry["points"], "size": len(own_division_data)},
+        "league": {
+            "rangLigue": my_entry.get("rang_ligue"), "pointsLigue": my_entry.get("points_ligue"),
+            "size": len(league_ranks),
+        },
+        "superClassement": (
+            {"rang": my_super["rang"], "points": my_super["points"], "size": len(ranked_super)}
+            if my_super else None
+        ),
+    })
 
 
 @app.route("/simulate-bonus", methods=["GET", "OPTIONS"])
