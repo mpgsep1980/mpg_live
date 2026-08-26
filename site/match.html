@@ -344,6 +344,65 @@
     }).join("");
   }
 
+  // "Joueurs sortis" -- retour utilisateur 2026-08-25, "j'aimerais avoir
+  // une vue sur les joueurs sortis, leur note et leur seuil de
+  // remplacement". Port de admin/manager.html::outBlockHtml/outRowHtml --
+  // titulaires D'ORIGINE reellement sortis (core/live_scoring.py, champ
+  // "out"), categorie a part de "Titulaires" (qui montre deja qui joue
+  // MAINTENANT, cf. replaced_starter dans playersHtml) pour lever
+  // l'ambiguite entre "qui joue" et "qui a ete remplace".
+  const OUT_REASON_LABELS = { tactique: "tactique", obligatoire: "obligatoire" };
+
+  function outBadge(p) {
+    return `<div class="note-badge ${noteClass(p.note_finale)}">${fmt(p.note_finale)}</div>`;
+  }
+
+  function outRowHtml(p) {
+    if (!p) return { badge: "", name: "" };
+    const reason = OUT_REASON_LABELS[p.reason] || p.reason;
+    // note_avec_bonus/note_seuil (retour utilisateur 2026-08-25, "leur note
+    // et leur seuil de remplacement") : avec une simulation de bonus active
+    // (siens McDo+/Zahia OU subis Suarez/Cheat Code), 2 notes distinctes --
+    // celle AVEC le(s) bonus simule(s) (informatif) et celle qui a
+    // REELLEMENT determine le remplacement (note_seuil, identique a
+    // note_finale si le vrai match est deja joue -- un bonus choisi
+    // maintenant n'a alors jamais pu influencer une decision deja reelle).
+    // N'affiche rien de plus si aucune des deux ne differe de note_finale.
+    const bonusDiffers = (p.note_avec_bonus !== undefined && p.note_avec_bonus !== p.note_finale)
+      || (p.note_seuil !== undefined && p.note_seuil !== p.note_finale);
+    const bonusDetail = bonusDiffers
+      ? `<span class="replaced-note">bonus : ${fmt(p.note_avec_bonus)} &middot; seuil retenu : ${fmt(p.note_seuil)}</span>`
+      : "";
+    return {
+      badge: outBadge(p),
+      name: `${p.name}<span class="replaced-note">&rarr; ${p.replaced_by} (${reason})</span>${bonusDetail}`,
+    };
+  }
+
+  function outBlockHtml(home, away) {
+    const homeOut = home.out || [];
+    const awayOut = away.out || [];
+    if (!homeOut.length && !awayOut.length) {
+      // Section explicite meme vide -- sinon indiscernable d'une
+      // fonctionnalite cassee. Aucun remplacement resolu = normal en
+      // debut/milieu de journee, MPG ne fige les subs tactiques/obligatoires
+      // qu'une fois les stats finales connues.
+      return `<div class="position-block"><div class="position-label">Joueurs sortis</div><div class="no-scorer" style="text-align:center; padding:0.25rem 0;">Aucun remplacement effectif pour l'instant</div></div>`;
+    }
+    const maxRows = Math.max(homeOut.length, awayOut.length);
+    let rows = "";
+    for (let i = 0; i < maxRows; i++) {
+      const hp = outRowHtml(homeOut[i]), ap = outRowHtml(awayOut[i]);
+      rows += `
+        <div class="player-row">
+          <div class="player">${hp.badge}<span class="player-name">${hp.name}</span></div>
+          <div class="row-sep">&middot;</div>
+          <div class="player away">${ap.badge}<span class="player-name">${ap.name}</span></div>
+        </div>`;
+    }
+    return `<div class="position-block"><div class="position-label">Joueurs sortis</div>${rows}</div>`;
+  }
+
   function benchBlockHtml(home, away) {
     const homeBench = (home.bench || []).filter(p => !p.entered);
     const awayBench = (away.bench || []).filter(p => !p.entered);
@@ -359,7 +418,7 @@
           <div class="player away">${ap ? benchBadge(ap) : ""}<span class="player-name">${ap ? ap.name : ""}</span></div>
         </div>`;
     }
-    return `<div class="position-block"><div class="position-label">Remplaçants</div>${rows}</div>`;
+    return `<div class="position-block"><div class="position-label">Remplaçants non entrés</div>${rows}</div>`;
   }
 
   // Feuille de but UNIFIEE et triee chronologiquement -- reel, MPG (duel de
@@ -388,6 +447,7 @@
           <div class="comp-team-name away">${awayName}</div>
         </div>
         ${playersHtml(match)}
+        ${outBlockHtml(match.home, match.away)}
         ${benchBlockHtml(match.home, match.away)}
         <div class="position-label">Buts</div>
         <div class="scorers-block">
