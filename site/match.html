@@ -70,6 +70,14 @@
      cas : mon boost touche mes joueurs, le nerf adverse touche les miens. */
   .note-badge.aura-boost { box-shadow: 0 0 0 2px var(--mpg-surface, #fff), 0 0 0 4px var(--mpg-warning), 0 0 7px 2px var(--mpg-warning); }
   .note-badge.aura-nerf { box-shadow: 0 0 0 2px var(--mpg-surface, #fff), 0 0 0 4px var(--mpg-danger), 0 0 7px 2px var(--mpg-danger); }
+  /* Point de coherence sur "Joueurs sortis" (retour utilisateur 2026-08-25,
+     "pour que les Managers verifient la coherence des choix effectues") :
+     vert = note bien SOUS le seuil configure (remplacement justifie), rouge
+     = note au-dessus du seuil malgre le remplacement (incoherence a
+     verifier). Meme mecanique visuelle que l'aura (anneau), semantique
+     differente -- sans ambiguite, ce n'est jamais la meme section de page. */
+  .note-badge.check-ok { box-shadow: 0 0 0 2px var(--mpg-surface, #fff), 0 0 0 4px var(--mpg-success), 0 0 5px 1px var(--mpg-success); }
+  .note-badge.check-bad { box-shadow: 0 0 0 2px var(--mpg-surface, #fff), 0 0 0 4px var(--mpg-danger), 0 0 5px 1px var(--mpg-danger); }
   .captain-flag {
     position: absolute; top: -0.25rem; right: -0.25rem; width: 0.85rem; height: 0.85rem;
     border-radius: 50%; background: #2b6fd1; color: #fff; font-size: 0.55rem;
@@ -354,12 +362,31 @@
   const OUT_REASON_LABELS = { tactique: "tactique", obligatoire: "obligatoire" };
 
   function outBadge(p) {
-    return `<div class="note-badge ${noteClass(p.note_finale)}">${fmt(p.note_finale)}</div>`;
+    // Point de coherence (retour utilisateur 2026-08-25, "pour que les
+    // Managers verifient la coherence des choix effectues") : entoure la
+    // note d'un anneau vert si elle est bien SOUS le seuil configure (le
+    // remplacement tactique est justifie), rouge si elle ne l'est pas
+    // (incoherence a verifier -- ne devrait normalement pas arriver).
+    // seuil_configure absent (remplacement "obligatoire", ou note pas
+    // encore connue) : pas d'anneau, rien a verifier.
+    let checkCls = "";
+    if (p.seuil_configure !== undefined && p.seuil_configure !== null && p.note_finale !== null && p.note_finale !== undefined) {
+      checkCls = p.note_finale < p.seuil_configure ? " check-ok" : " check-bad";
+    }
+    return `<div class="note-badge ${noteClass(p.note_finale)}${checkCls}">${fmt(p.note_finale)}</div>`;
   }
 
   function outRowHtml(p) {
     if (!p) return { badge: "", name: "" };
-    const reason = OUT_REASON_LABELS[p.reason] || p.reason;
+    // "(tactique <6)" (retour utilisateur 2026-08-25, "je veux que cette
+    // note soit affichee dans Joueurs Sortis") -- seuil_configure est LE
+    // NOMBRE FIXE choisi par le manager avant le match (team["tacticalSubs"]),
+    // jamais mute par un bonus simule -- distinct de note_seuil ci-dessous
+    // (qui est la note COMPAREE a ce seuil, pas le seuil lui-meme). Absent
+    // pour un remplacement "obligatoire" (aucun seuil, declenche par une
+    // absence de note).
+    const threshold = p.seuil_configure !== undefined && p.seuil_configure !== null ? ` <${fmt(p.seuil_configure)}` : "";
+    const reason = (OUT_REASON_LABELS[p.reason] || p.reason) + threshold;
     // note_avec_bonus/note_seuil (retour utilisateur 2026-08-25, "leur note
     // et leur seuil de remplacement") : avec une simulation de bonus active
     // (siens McDo+/Zahia OU subis Suarez/Cheat Code), 2 notes distinctes --
@@ -371,7 +398,7 @@
     const bonusDiffers = (p.note_avec_bonus !== undefined && p.note_avec_bonus !== p.note_finale)
       || (p.note_seuil !== undefined && p.note_seuil !== p.note_finale);
     const bonusDetail = bonusDiffers
-      ? `<span class="replaced-note">bonus : ${fmt(p.note_avec_bonus)} &middot; seuil retenu : ${fmt(p.note_seuil)}</span>`
+      ? `<span class="replaced-note">bonus : ${fmt(p.note_avec_bonus)} &middot; note comparee au seuil : ${fmt(p.note_seuil)}</span>`
       : "";
     return {
       badge: outBadge(p),

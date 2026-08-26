@@ -600,7 +600,10 @@ def resolve_starting_lineup(
     for slot_pid, starter_id in zip(xi_slot_ids, xi_ids):
         if slot_pid != starter_id:
             used_ids.add(slot_pid)
-            resolution[starter_id] = {"playerId": slot_pid, "source": "tactique", "poste_sautes": 0}
+            resolution[starter_id] = {
+                "playerId": slot_pid, "source": "tactique", "poste_sautes": 0,
+                "rating": (tactical_subs.get(starter_id) or {}).get("rating"),
+            }
 
     # Passe 1 : remplacements tactiques (prioritaires), jamais pour un gardien.
     # Si le remplacant designe n'a pas joue, il n'y a personne a faire entrer --
@@ -671,7 +674,7 @@ def resolve_starting_lineup(
         if not should_sub:
             continue
         used_ids.add(ts["subId"])
-        resolution[starter_id] = {"playerId": ts["subId"], "source": "tactique", "poste_sautes": 0}
+        resolution[starter_id] = {"playerId": ts["subId"], "source": "tactique", "poste_sautes": 0, "rating": ts["rating"]}
 
     # Passe 2 : remplacement obligatoire -- seulement titulaires non couverts
     # par le tactique et n'ayant pas joue. Cascade poste identique -> poste(s)
@@ -810,6 +813,18 @@ def resolve_starting_lineup(
                                          and note_avec_bonus is not None)
                     else starter_info["note_finale"]
                 ),
+                # Seuil CONFIGURE par le manager pour ce remplacement tactique
+                # (team["tacticalSubs"][...]["rating"], ex. 6 pour Manzambi ->
+                # Foden) -- retour utilisateur 2026-08-25, "je veux que cette
+                # note soit affichee ... pour que les managers verifient la
+                # coherence des choix effectues". A NE PAS CONFONDRE avec
+                # note_seuil ci-dessus (qui est la note COMPAREE au seuil, pas
+                # le seuil lui-meme) -- ce champ-ci est LE NOMBRE FIXE que le
+                # manager a configure avant le match, jamais mute par un bonus
+                # simule. None pour un remplacement "obligatoire" (aucun seuil,
+                # cf. passe 2 -- declenche par une absence de note, pas une
+                # comparaison).
+                "seuil_configure": res.get("rating"),
             })
 
     bench = []
