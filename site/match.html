@@ -93,13 +93,16 @@
   .ball.mpg { background: var(--mpg-success); }
   .ball.csc { background: var(--mpg-danger); }
   .ball.real_og { background: var(--mpg-warning); }
-  /* Point de coherence sur "Joueurs sortis" (retour utilisateur 2026-08-25) :
-     accole au SEUIL affiche (pas a la note du joueur sorti) -- vert = note
-     bien sous ce seuil (remplacement justifie), rouge = incoherence a
-     verifier. */
-  .ball.check-ok { background: var(--mpg-success); }
-  .ball.check-bad { background: var(--mpg-danger); }
   .scorer-time { color: var(--mpg-text-soft); font-size: 0.75rem; flex: none; }
+  /* Badge de seuil sur "Joueurs sortis" (retour utilisateur 2026-08-25,
+     "je voyais ca en realite... avec le signe '<' / memes seuils de
+     couleurs rouge/jaune/vert") -- meme composant que .note-badge (colore
+     via noteClass, comme une vraie note), juste plus petit pour tenir
+     dans le texte "-> Remplacant (tactique <6)". */
+  .note-badge.threshold-badge {
+    display: inline-flex; width: 1.3rem; height: 1.3rem; font-size: 0.6rem;
+    vertical-align: middle; margin-left: 0.3rem;
+  }
   .no-scorer { color: var(--mpg-text-soft); font-size: 0.78rem; font-style: italic; }
 
   @media (max-width: 640px) {
@@ -376,22 +379,20 @@
     // pour un remplacement "obligatoire" (aucun seuil, declenche par une
     // absence de note).
     // Point de coherence (retour utilisateur 2026-08-25, "je voulais le vert
-    // autour du seuil de remplacement pas autour de la note du remplace") :
-    // un point colore ACCOLE AU SEUIL lui-meme (pas a la note du joueur
-    // sorti) -- vert si la note est bien SOUS ce seuil (remplacement
-    // justifie), rouge sinon (incoherence a verifier -- ne devrait
-    // normalement pas arriver). Rien si le seuil ou la note n'est pas
-    // connu(e) (remplacement "obligatoire", ou note pas encore stabilisee).
-    let thresholdDot = "";
-    let threshold = "";
+    // autour du seuil de remplacement pas autour de la note du remplace",
+    // puis "je voyais ca en realite... avec le signe '<' / on utiliserait
+    // les memes seuils de couleurs (rouge/jaune/vert)" -- reproduit tel quel
+    // l'affichage MPG lui-meme (petit badge rond colore, comme une note) :
+    // le seuil devient un badge "<6" colore via LA MEME echelle que les
+    // notes de joueur (noteClass), pas un simple point de comparaison --
+    // remplace le point vert/rouge precedent (comparer les DEUX badges
+    // colores cote a cote -- note du sorti vs seuil -- suffit au manager
+    // pour juger de lui-meme, pas besoin d'un 3e indicateur separe).
+    let thresholdBadge = "";
     if (p.seuil_configure !== undefined && p.seuil_configure !== null) {
-      threshold = ` <${fmt(p.seuil_configure)}`;
-      if (p.note_finale !== null && p.note_finale !== undefined) {
-        const ok = p.note_finale < p.seuil_configure;
-        thresholdDot = `<span class="ball ${ok ? "check-ok" : "check-bad"}" title="${ok ? "Note sous le seuil : remplacement justifie" : "Note au-dessus du seuil malgre le remplacement : a verifier"}"></span>`;
-      }
+      thresholdBadge = `<span class="note-badge threshold-badge ${noteClass(p.seuil_configure)}" title="Seuil de remplacement configure">&lt;${fmt(p.seuil_configure)}</span>`;
     }
-    const reason = (OUT_REASON_LABELS[p.reason] || p.reason) + threshold + thresholdDot;
+    const reason = OUT_REASON_LABELS[p.reason] || p.reason;
     // note_avec_bonus/note_seuil (retour utilisateur 2026-08-25, "leur note
     // et leur seuil de remplacement") : avec une simulation de bonus active
     // (siens McDo+/Zahia OU subis Suarez/Cheat Code), 2 notes distinctes --
@@ -407,7 +408,7 @@
       : "";
     return {
       badge: outBadge(p),
-      name: `${p.name}<span class="replaced-note">&rarr; ${p.replaced_by} (${reason})</span>${bonusDetail}`,
+      name: `${p.name}<span class="replaced-note">&rarr; ${p.replaced_by} (${reason})${thresholdBadge}</span>${bonusDetail}`,
     };
   }
 
