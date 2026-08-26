@@ -361,10 +361,10 @@
       <p class="meta">Δ = évolution de la différence de buts en ma faveur si l'adversaire joue ce bonus (négatif = mauvais pour moi).</p>`;
   }
 
-  function expanderShellHtml(row, league, theme) {
+  function expanderShellHtml(row, league, theme, openByDefault) {
     const name = league ? league.nom.replace(/_/g, " ") : row.league_code;
     return `
-      <details class="match-expander" open>
+      <details class="match-expander"${openByDefault ? " open" : ""}>
         <summary>
           <span class="summary-dot" style="background:${THEME_BAR[theme]}"></span>
           <span class="summary-league" style="color:${THEME_TEXT[theme]}">${name}</span>
@@ -543,10 +543,18 @@
     }
 
     statusEl.textContent = "";
+    // Repli sur des expanders REPLIES par defaut des que plusieurs matchs
+    // sont en direct en meme temps (retour utilisateur 2026-08-25, "on aura
+    // besoin d'expanders pour ne pas avoir a scroller indefiniment") --
+    // ouvrir TOUS les blocs par defaut (comportement precedent) revenait a
+    // tout afficher en meme temps, aucun gain reel par rapport a l'absence
+    // d'expander. Un seul match en direct reste ouvert d'office (rien a
+    // gagner a le forcer en cliquer-pour-voir).
+    const openByDefault = myLiveRows.length === 1;
     listEl.innerHTML = myLiveRows.map(row => {
       const league = leaguesByCode[row.league_code];
       const theme = leagueTheme(league && league.nom);
-      return expanderShellHtml(row, league, theme);
+      return expanderShellHtml(row, league, theme, openByDefault);
     }).join("");
 
     const blocks = listEl.querySelectorAll(".match-expander");
