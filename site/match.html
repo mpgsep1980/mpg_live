@@ -129,11 +129,6 @@
     border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); padding: 0.4rem 0.5rem;
     font-size: 0.9rem; font-family: inherit; color: var(--mpg-title); background: var(--mpg-surface, #fff);
   }
-  .sim-row button {
-    background: var(--mpg-action); color: #fff; border: none; border-radius: var(--mpg-radius);
-    padding: 0.5rem 1rem; font-size: 0.9rem; font-weight: 600; cursor: pointer;
-  }
-  .sim-row button:hover { background: var(--mpg-action-hover); }
   .sim-result { display: flex; gap: 2rem; flex-wrap: wrap; margin-top: 0.5rem; }
   .sim-result .side { text-align: center; }
   .sim-result .side.me .total { color: var(--mpg-action); }
@@ -658,13 +653,28 @@
     const myTeam = meIsHome ? lastBaselineMatch.home : lastBaselineMatch.away;
     const hidden = !BONUS_NEEDS_TARGET.has(ownBonus);
     wrap.innerHTML = `<label>Cible (McDo+)${targetSelectHtml(myTeam, "", hidden)}</label>`;
+    // Auto-simule des qu'une cible McDo+ est choisie (retour utilisateur
+    // 2026-08-25, "on peut se passer du bouton Simuler, ca ralentit la
+    // navigation") -- le select est recree a chaque appel (innerHTML
+    // ci-dessus), le listener doit donc etre rattache a chaque fois.
+    const targetSelect = document.getElementById("sim-target-player");
+    if (targetSelect) targetSelect.addEventListener("change", () => simulateBonus(myUserId));
   }
 
   async function initSimulator(userId, divisionSize) {
     const statusEl = document.getElementById("sim-status");
     const ownSelect = document.getElementById("sim-own-bonus");
     ownSelect.innerHTML = optionsHtml(bonusOptionsForDivisionSize(divisionSize), "");
-    ownSelect.addEventListener("change", () => updateTargetVisibility(userId));
+    // Auto-simule directement au changement de coup (retour utilisateur
+    // 2026-08-25, suppression du bouton "Simuler" -- ralentissait la
+    // navigation). Si le coup choisi a besoin d'une cible (McDo+), cette
+    // premiere simulation part sans cible (corrigee des que la cible est
+    // choisie, cf. updateTargetVisibility ci-dessus) plutot que d'attendre
+    // un clic supplementaire.
+    ownSelect.addEventListener("change", () => {
+      updateTargetVisibility(userId);
+      simulateBonus(userId);
+    });
 
     try {
       const url = new URL(`${SIMULATE_API_BASE}/simulate-bonus`);
@@ -757,7 +767,6 @@
           </select></label>
           <label>Son coup<select id="sim-own-bonus">${optionsHtml(BONUS_OPTIONS, "")}</select></label>
           <span id="sim-target-wrap"></span>
-          <button id="sim-run-btn">Simuler</button>
         </div>
         <div id="sim-status" class="status-msg">Chargement des compositions...</div>
         <div id="sim-result"></div>
@@ -768,9 +777,6 @@
   function wireSimulator(homeUserId, awayUserId, homeName, awayName, divisionSize, currentUserId) {
     document.getElementById("simulator").innerHTML =
       simulatorHtml(homeUserId, awayUserId, homeName, awayName, currentUserId);
-    document.getElementById("sim-run-btn").addEventListener("click", () => {
-      simulateBonus(document.getElementById("sim-perspective").value);
-    });
     document.getElementById("sim-perspective").addEventListener("change", (e) => {
       wireSimulator(homeUserId, awayUserId, homeName, awayName, divisionSize, e.target.value);
     });
