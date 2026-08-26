@@ -119,6 +119,7 @@
   .sim-result .total { font-size: 1.6rem; font-weight: 700; }
   .sim-result .label { font-size: 0.75rem; color: var(--mpg-text-soft); }
   .sweep-bad { color: var(--mpg-danger); font-weight: 600; }
+  .sweep-baseline td { font-weight: 700; background: var(--mpg-action-soft, rgba(0,0,0,0.03)); border-bottom: 2px solid var(--mpg-border-soft); }
 
   .status-msg { color: var(--mpg-text-soft); font-size: 0.9rem; margin: 1rem 0; }
   .status-msg.err { color: var(--mpg-danger); }
@@ -390,13 +391,18 @@
       </div>`;
   }
 
-  function matchHeaderHtml(match, homeName, awayName, gameWeek) {
+  function matchHeaderHtml(match, homeName, awayName, gameWeek, simulated) {
+    // `simulated` (retour utilisateur 2026-08-25) : distingue le score REEL
+    // (chargement initial) du score recalcule apres "Simuler" -- sans ca,
+    // rien ne signale que ce nombre en gros n'est plus le resultat MPG
+    // officiel une fois un coup hypothetique applique.
+    const meta = simulated ? `Journée ${gameWeek} · <em>scénario simulé</em>` : `Journée ${gameWeek}`;
     return `
       <div class="match-header">
         <div class="team home"><div class="team-name">${homeName}</div></div>
         <div>
           <div class="score">${fmt(match.home.score)} – ${fmt(match.away.score)}</div>
-          <div class="meta">Journée ${gameWeek}</div>
+          <div class="meta">${meta}</div>
         </div>
         <div class="team away"><div class="team-name">${awayName}</div></div>
       </div>`;
@@ -460,6 +466,24 @@
     return swing > 0 ? `+${swing}` : `${swing}`;
   }
   function sweepTableHtml(data, isHome) {
+    // Ligne "Aucun" (retour utilisateur 2026-08-25, "il faut laisser la
+    // possibilite que l'adversaire n'en a pas mis, ce n'est pas le cas
+    // actuellement") : data.baseline existe deja cote API (utilise pour la
+    // barre de chances de resultat) mais n'apparaissait jamais comme LIGNE
+    // du tableau -- seuls les scenarios AVEC un bonus adverse etaient
+    // listes. Ajoutee en tete, mise en avant visuellement (fond + bordure)
+    // comme reference plutot que triee parmi les autres (delta 0 par
+    // definition, pas besoin de la trier).
+    const baseline = data.baseline;
+    const baselineHome = isHome ? baseline.myScore : baseline.theirScore;
+    const baselineAway = isHome ? baseline.theirScore : baseline.myScore;
+    const baselineRow = `
+      <tr class="sweep-baseline">
+        <td title="L'adversaire ne joue aucun bonus">Aucun</td>
+        <td class="num">${baselineHome}</td>
+        <td class="num">${baselineAway}</td>
+        <td class="num">=</td>
+      </tr>`;
     const rows = data.scenarios.map(s => {
       const homeScore = isHome ? s.myScore : s.theirScore;
       const awayScore = isHome ? s.theirScore : s.myScore;
@@ -478,7 +502,7 @@
       <div class="table-wrap">
         <table class="mpg-table">
           <thead><tr><th></th><th class="num">Domicile</th><th class="num">Extérieur</th><th class="num">Δ</th></tr></thead>
-          <tbody>${rows}</tbody>
+          <tbody>${baselineRow}${rows}</tbody>
         </table>
       </div>
       <p class="meta">Δ = évolution de la différence de buts en ma faveur si l'adversaire joue ce bonus (négatif = mauvais pour moi).</p>`;
@@ -579,6 +603,15 @@
       statusEl.textContent = "";
       lastBaselineMatch = data;
       resultEl.innerHTML = simResultHtml(data, userId);
+      // Rejoue l'en-tete ET les compositions avec le coup simule (retour
+      // utilisateur 2026-08-25, "meme si le bonus change la donne et
+      // modifie le nombre de buteurs, le score reste identique a celui de
+      // base") -- le score du bandeau (matchHeaderHtml) n'etait rempli
+      // qu'au chargement initial (match REEL), jamais rejoue apres
+      // "Simuler" : les buteurs listes plus bas changeaient deja (goal_events
+      // vient bien de `data`), mais le score en gros au-dessus restait celui
+      // d'avant, incoherent avec le detail juste en dessous.
+      document.getElementById("match-header").innerHTML = matchHeaderHtml(data, homeName, awayName, gameWeek, true);
       // Rejoue les compositions avec les auras du coup simule (retour
       // utilisateur 2026-08-25, "on entoure d'une aura... les joueurs
       // touches par nos propres bonus / un bonus adverse") -- sans ce
