@@ -224,7 +224,27 @@ def live_scenario_sweep():
     baseline_match = compute_match(dict(base_bonus_choices))
     baseline = summarize(baseline_match)
     opponent_team = baseline_match["home"] if baseline_match["home"]["userId"] == opponent_user_id else baseline_match["away"]
-    outfield_players = [(pid, p["name"]) for pid, p in opponent_team["players"].items() if p["position"] != 1]
+    # Exclut les joueurs entres en cours de match (replaced_starter renseigne
+    # -- cf. core/live_scoring.py, le slot affiche desormais SON remplacant,
+    # pas le titulaire d'origine) : retour utilisateur 2026-08-25, "tu
+    # appliques des bonus sur des joueurs qui sont remplacants au debut du
+    # match" -- un manager choisit sa cible McDo+ AVANT le coup d'envoi,
+    # seuls les titulaires DECLARES a ce moment-la sont des cibles plausibles
+    # pour l'adversaire (un remplacant entre ensuite n'a jamais pu etre vise
+    # a l'avance). Le titulaire D'ORIGINE remplace reste, lui, une cible
+    # valable -- reintroduit depuis opponent_team["out"], meme filtre
+    # is_default_rating que site/match.html::targetSelectHtml (son vrai
+    # match pas encore joue : un bonus choisi maintenant n'a alors jamais
+    # pu influencer une decision deja reelle, cf. commentaire de cette
+    # fonction cote client).
+    out_originals = [
+        (p["playerId"], p["name"]) for p in opponent_team.get("out", [])
+        if p.get("is_default_rating")
+    ]
+    outfield_players = [
+        (pid, p["name"]) for pid, p in opponent_team["players"].items()
+        if p["position"] != 1 and not p.get("replaced_starter")
+    ] + out_originals
 
     def scenario_row(bonus_key, label, target_player_id=None, target_name=None):
         choices = dict(base_bonus_choices)
