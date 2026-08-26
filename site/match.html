@@ -80,6 +80,10 @@
     position: absolute; bottom: -0.25rem; right: -0.25rem; width: 0.8rem; height: 0.8rem;
     border-radius: 50%; background: var(--mpg-success); border: 1px solid var(--mpg-surface, #fff);
   }
+  .real-goal-flag {
+    position: absolute; bottom: -0.25rem; left: -0.25rem; width: 0.8rem; height: 0.8rem;
+    border-radius: 50%; background: var(--mpg-title); border: 1px solid var(--mpg-surface, #fff);
+  }
 
   .scorers-block { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.5rem; }
   .scorer-row { display: flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; min-width: 0; }
@@ -294,10 +298,18 @@
     const note = p.effective_note;
     const cls = noteClass(note);
     const noteText = fmt(note);
-    const goalFlag = p.but_mpg_bonus ? `<span class="goal-flag" title="But MPG"></span>` : "";
+    // But reel (retour utilisateur 2026-08-25, "Palmer et Rogers ont marque
+    // un but reel, un point noir devrait apparaitre, tout comme le point
+    // vert de Foden symbolise son but MPG") -- meme principe que goal-flag
+    // (but_mpg_bonus, vert) mais pour real_goals (deja calcule cote serveur,
+    // jamais affiche sur le badge jusqu'ici, seulement dans la liste "Buts"
+    // plus bas) -- coin oppose (bas-gauche) pour ne jamais se superposer au
+    // point vert si un joueur a marque les deux types de but a la fois.
+    const mpgGoalFlag = p.but_mpg_bonus ? `<span class="goal-flag" title="But MPG"></span>` : "";
+    const realGoalFlag = p.real_goals > 0 ? `<span class="real-goal-flag" title="But réel"></span>` : "";
     const auraCls = BOOST_TAGS.has(p.bonus_tag) ? " aura-boost" : NERF_TAGS.has(p.bonus_tag) ? " aura-nerf" : "";
     const title = p.bonus_tag ? ` title="${BONUS_TAG_LABELS[p.bonus_tag] || p.bonus_tag}"` : "";
-    return `<div class="note-badge ${cls}${auraCls}"${title}>${noteText}${isCaptain ? `<span class="captain-flag">C</span>` : ""}${goalFlag}</div>`;
+    return `<div class="note-badge ${cls}${auraCls}"${title}>${noteText}${isCaptain ? `<span class="captain-flag">C</span>` : ""}${mpgGoalFlag}${realGoalFlag}</div>`;
   }
 
   function benchBadge(p) {
