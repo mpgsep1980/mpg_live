@@ -1212,9 +1212,15 @@ def apply_line_battles(match: dict) -> dict:
             for ev in p.get("real_own_goal_scored_events", []):
                 eid = ev.get("eventId")
                 if eid and eid not in own_goal_events_seen:
-                    own_goal_events_seen[eid] = ev
+                    own_goal_events_seen[eid] = {**ev, "scorer_name": p["name"]}
         for ev in own_goal_events_seen.values():
-            goal_events.append({"name": "CSC", "type": "real_og", "time": ev.get("time"), "date": ev.get("date")})
+            # Retour utilisateur 2026-08-27, "qui marque ce CSC pour mon
+            # adversaire, pas de nom de buteur" -- le buteur est deja connu
+            # ici (c'est literalement `p` de la boucle ci-dessus, le joueur
+            # de l'effectif ADVERSE dont real_own_goal_scored_events vient
+            # d'etre trouve non-vide), simplement jamais transmis a
+            # goal_events avant ce correctif (name="CSC" en dur).
+            goal_events.append({"name": f"CSC ({ev['scorer_name']})", "type": "real_og", "time": ev.get("time"), "date": ev.get("date")})
         team["buts_mpg"] = buts_mpg
         team["real_goals"] = sum(p.get("real_goals", 0) for p in team["players"].values()) + len(own_goal_events_seen)
         team["score"] = team["real_goals"] + buts_mpg

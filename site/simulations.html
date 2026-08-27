@@ -28,9 +28,14 @@
   .expander-body { padding: 0 1.1rem 1.1rem; border-top: 0.5px solid var(--mpg-border-soft); }
 
   /* --- En-tete du match --- */
+  /* Retour utilisateur 2026-08-27, "header non centre" -- une bande pleine
+     largeur avec deux noms de club courts et un score au milieu se lit mal
+     (beaucoup de vide de chaque cote). Carte compacte, largeur bornee et
+     centree explicitement plutot qu'etiree sur toute la largeur de page. */
   .match-header {
     display: grid; grid-template-columns: 1fr auto 1fr; gap: 1rem; align-items: center;
-    border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); padding: 1rem 1.25rem; margin: 1rem 0;
+    border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); padding: 1rem 1.25rem;
+    max-width: 26rem; margin: 1rem auto;
   }
   .match-header .team-name { font-weight: 700; font-size: 1.05rem; }
   .match-header .team.away { text-align: right; }
@@ -93,6 +98,14 @@
   .real-goal-flag {
     position: absolute; bottom: -0.25rem; left: -0.25rem; width: 0.8rem; height: 0.8rem;
     border-radius: 50%; background: var(--mpg-title); border: 1px solid var(--mpg-surface, #fff);
+  }
+  /* CSC classique (retour utilisateur 2026-08-27, "qui marque ce CSC ...
+     pas de point jaune sur le joueur") -- coin haut-gauche (les 3 autres
+     coins sont deja pris par capitaine/but MPG/but reel), meme jaune que
+     .ball.real_og (#e0b400) pour rester coherent avec la liste "Buts". */
+  .csc-flag {
+    position: absolute; top: -0.25rem; left: -0.25rem; width: 0.8rem; height: 0.8rem;
+    border-radius: 50%; background: #e0b400; border: 1px solid var(--mpg-surface, #fff);
   }
 
   .scorers-block { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.5rem; }
@@ -318,9 +331,15 @@
     const noteText = fmt(note);
     const mpgGoalFlag = p.but_mpg_bonus ? `<span class="goal-flag" title="But MPG"></span>` : "";
     const realGoalFlag = p.real_goals > 0 ? `<span class="real-goal-flag" title="But réel"></span>` : "";
+    // CSC classique (retour utilisateur 2026-08-27, "qui marque ce CSC pour
+    // mon adversaire, pas de point jaune sur le joueur") -- real_own_goal_
+    // scored_events est deja calcule cote serveur (compute_player_live_score)
+    // pour CHAQUE joueur, jamais affiche sur le badge jusqu'ici (seulement
+    // dans la liste "Buts", via goal_events, cote de l'equipe BENEFICIAIRE).
+    const cscFlag = (p.real_own_goal_scored_events || []).length > 0 ? `<span class="csc-flag" title="CSC (contre son camp)"></span>` : "";
     const auraCls = BOOST_TAGS.has(p.bonus_tag) ? " aura-boost" : NERF_TAGS.has(p.bonus_tag) ? " aura-nerf" : "";
     const title = p.bonus_tag ? ` title="${BONUS_TAG_LABELS[p.bonus_tag] || p.bonus_tag}"` : "";
-    return `<div class="note-badge ${cls}${auraCls}"${title}>${noteText}${isCaptain ? `<span class="captain-flag">C</span>` : ""}${mpgGoalFlag}${realGoalFlag}</div>`;
+    return `<div class="note-badge ${cls}${auraCls}"${title}>${noteText}${isCaptain ? `<span class="captain-flag">C</span>` : ""}${mpgGoalFlag}${realGoalFlag}${cscFlag}</div>`;
   }
 
   function benchBadge(p) {
