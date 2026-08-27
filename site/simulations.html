@@ -723,7 +723,7 @@
       const targetPlayerId = targetSelect ? targetSelect.value : "";
 
       statusEl.textContent = "Simulation en cours...";
-      statusEl.className = "status-msg";
+      statusEl.className = "sim-status status-msg";
       resultEl.innerHTML = "";
 
       try {
@@ -739,7 +739,7 @@
         const data = await res.json();
         if (!res.ok) {
           statusEl.textContent = "Erreur : " + (data.error || res.statusText);
-          statusEl.className = "status-msg err";
+          statusEl.className = "sim-status status-msg err";
           return;
         }
         statusEl.textContent = "";
@@ -756,7 +756,7 @@
         refreshClassement(ownBonus, targetPlayerId, lastClassementBaseline);
       } catch (e) {
         statusEl.textContent = "Simulation indisponible pour le moment (" + e.message + ").";
-        statusEl.className = "status-msg err";
+        statusEl.className = "sim-status status-msg err";
       }
     }
 
@@ -809,7 +809,7 @@
         });
     } catch (e) {
       statusEl.textContent = "Simulateur indisponible pour le moment (" + e.message + "). Le service met parfois jusqu'à 30s à se réveiller.";
-      statusEl.className = "status-msg err";
+      statusEl.className = "sim-status status-msg err";
       root.querySelector(".summary-score").textContent = "indisponible";
     }
   }
