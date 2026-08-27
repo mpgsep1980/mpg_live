@@ -387,13 +387,15 @@
         <div class="label">${label} · ${fmt(current.points)} pts</div>
       </div>`;
   }
+  // Renvoie les items SEULS (pas de wrapper .sim-classement ici) -- le
+  // conteneur qui reçoit ce HTML (root.querySelector(".sim-classement"))
+  // porte déjà cette classe (retour utilisateur 2026-08-27, testé
+  // interactivement : un wrapper ici doublait .sim-classement en imbriqué).
   function classementHtml(data, baseline) {
     return `
-      <div class="sim-classement">
-        ${classementItemHtml("Division", data.division, baseline && baseline.division)}
-        ${classementItemHtml("Ligue", data.league, baseline && baseline.league)}
-        ${data.superClassement ? classementItemHtml("Super Classement", data.superClassement, baseline && baseline.superClassement) : ""}
-      </div>`;
+      ${classementItemHtml("Division", data.division, baseline && baseline.division)}
+      ${classementItemHtml("Ligue", data.league, baseline && baseline.league)}
+      ${data.superClassement ? classementItemHtml("Super Classement", data.superClassement, baseline && baseline.superClassement) : ""}`;
   }
   async function loadClassement(ctx, ownBonus, targetPlayerId) {
     const url = new URL(`${SIMULATE_API_BASE}/simulate-classement`);

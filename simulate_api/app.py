@@ -297,8 +297,14 @@ def simulate_classement():
 
     return jsonify({
         "division": {"rang": my_entry["rang"], "points": my_entry["points"], "size": len(own_division_data)},
+        # "rang"/"points" partout (retour utilisateur 2026-08-27, teste
+        # interactivement) -- "league" utilisait a tort rangLigue/pointsLigue,
+        # different de "division"/"superClassement", ce qui rendait le rang
+        # de ligue silencieusement "undefined" cote site (classementItemHtml,
+        # site/match.html et site/simulations.html, lit current.rang/.points
+        # de facon uniforme sur les trois sections).
         "league": {
-            "rangLigue": my_entry.get("rang_ligue"), "pointsLigue": my_entry.get("points_ligue"),
+            "rang": my_entry.get("rang_ligue"), "points": my_entry.get("points_ligue"),
             "size": len(league_ranks),
         },
         "superClassement": (

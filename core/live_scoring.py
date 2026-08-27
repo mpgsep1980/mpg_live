@@ -1043,7 +1043,22 @@ def compute_team_live_score(
     cle du coup joue par l'ADVERSAIRE, cf. docstring module) -- "total" est la
     somme des effective_note APRES coups, PRE duel de lignes. removeGoal
     (Valise) n'est PAS applique ici -- il agit sur les buts, determines
-    seulement apres apply_line_battles, cf. compute_division_live_scores."""
+    seulement apres apply_line_battles, cf. compute_division_live_scores.
+
+    Composition pas encore verrouillee par MPG (retour utilisateur
+    2026-08-27, KeyError reel : une journee MPG peut regrouper des coups
+    d'envoi decales, cf. docstring get_division_matches -- rien ne garantit
+    que TOUS les matchs d'une division verrouillent leurs compositions au
+    meme instant) : `team` se reduit alors a {teamId, composition,
+    playersOnPitch: {}}, sans cle "players" du tout. Traite comme un match
+    pas commence -- total=0, aucun joueur -- plutot que de planter toute la
+    division/le tick pour un seul match encore en attente."""
+    if not team.get("players"):
+        return {
+            "total": 0.0, "players": {}, "bench": [], "out": [],
+            "userId": team.get("userId"), "formation": team.get("composition"),
+            "rotaldo_count": 0, "csc_conceded": 0,
+        }
     lineup = resolve_starting_lineup(
         team, real_matches_by_id, block_tactical=block_tactical,
         own_bonus=(own_bonus or {}).get("bonus"), target_player_id=(own_bonus or {}).get("targetPlayerId"),
@@ -1457,13 +1472,24 @@ def collect_real_match_ids(division_matches: list[dict]) -> set[str]:
     ET banc -- les remplacants ont besoin de leur propre match reel pour
     resoudre les remplacements, cf. resolve_starting_lineup) de tous les
     matchs d'une division -- pour ne fetch chaque match reel qu'une seule fois
-    cote appelant, meme s'il est partage par plusieurs joueurs/equipes."""
+    cote appelant, meme s'il est partage par plusieurs joueurs/equipes.
+
+    `.get("players", {})`/`.get("playersOnPitch", {})` plutot qu'un acces
+    direct (retour utilisateur 2026-08-27, KeyError reel en testant un
+    scenario a plusieurs matchs d'une meme division dont les compositions ne
+    se verrouillent pas toutes au meme instant -- cf. docstring
+    get_division_matches, une journee MPG peut regrouper des coups d'envoi
+    decales) : un match de la division encore sans composition (home/away
+    reduits a {teamId, composition, playersOnPitch: {}}, AUCUNE cle
+    "players") ne doit pas faire echouer la resolution des matchs reels des
+    AUTRES matchs de la meme division qui, eux, sont deja prets -- meme
+    logique degradee-mais-non-bloquante que le reste du pipeline live."""
     match_ids: set[str] = set()
     for div_match in division_matches:
         for side in ("home", "away"):
             team = div_match[side]
-            players = team["players"]
-            for slot in team["playersOnPitch"].values():
+            players = team.get("players") or {}
+            for slot in (team.get("playersOnPitch") or {}).values():
                 match_id = players.get(slot["playerId"], {}).get("matchId")
                 if match_id:
                     match_ids.add(match_id)
