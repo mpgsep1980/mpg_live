@@ -37,18 +37,92 @@
   .match-header .score { font-size: 1.6rem; font-weight: 700; text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .match-header .meta { text-align: center; }
 
-  /* --- Compositions --- */
-  .lineups { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
-  @media (max-width: 640px) { .lineups { grid-template-columns: 1fr; } }
-  .team-column { border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); padding: 1rem 1.25rem; }
-  .team-column h2 { margin: 0 0 0.5rem; font-size: 1rem; }
-  .team-column h3 { margin: 1rem 0 0.4rem; font-size: 0.8rem; color: var(--mpg-text-soft); text-transform: uppercase; letter-spacing: 0.02em; }
-  .player-row { display: grid; grid-template-columns: 1.5rem 1fr auto auto; gap: 0.5rem; align-items: center; padding: 0.2rem 0; font-size: 0.88rem; }
-  .player-row .pos { color: var(--mpg-text-soft); font-size: 0.75rem; font-weight: 600; }
-  .player-row .pnote { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 2.2em; text-align: right; }
-  .player-row.bench-row .pname, .player-row.bench-row .pnote { color: var(--mpg-text-soft); }
-  .goal-group { font-size: 0.85rem; margin: 0.25rem 0; }
-  .goal-group .none { color: var(--mpg-text-soft); font-size: 0.8rem; }
+  /* --- Compositions -- mise en page entrelacee par ligne de poste (G/D/M/A),
+     meme traitement que site/match.html (retour utilisateur 2026-08-27,
+     "tu as retire tout ce qu'on avait fait concernant les couleurs, les
+     moyennes par lignes, le retrait du bouton Simuler" -- cette page n'avait
+     jamais recu ces correctifs, portes ici a l'identique). --mpg-success/
+     --mpg-warning/--mpg-danger reutilises tels quels pour que la barre
+     "chances de resultat" (cf. oddsBarHtml) partage la meme echelle. */
+  .lineups-card { border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); padding: 1rem 1.25rem; margin: 1rem 0; }
+  .comp-teams { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+  .comp-team-name { font-weight: 700; font-size: 1rem; }
+  .comp-team-name.away { text-align: right; }
+
+  .position-block { margin-top: 0.5rem; }
+  .position-label {
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--mpg-text-soft); text-align: center; margin: 0.6rem 0 0.35rem;
+    border-top: 0.5px solid var(--mpg-border-soft); padding-top: 0.5rem;
+  }
+  .position-label.line-avg-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 0.4rem; }
+  .line-avg { font-weight: 700; color: var(--mpg-warning); font-variant-numeric: tabular-nums; font-size: 1rem; text-transform: none; }
+
+  .player-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 0.4rem; padding: 0.15rem 0; }
+  .player { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
+  .player.away { flex-direction: row-reverse; text-align: right; }
+  .player-name { font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row-sep { text-align: center; color: var(--mpg-border-soft); font-size: 0.82rem; }
+  .replaced-note { display: block; font-size: 0.72rem; color: var(--mpg-text-soft); font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .note-badge {
+    flex: none; width: 1.7rem; height: 1.7rem; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.72rem; font-weight: 700; color: #fff;
+    font-variant-numeric: tabular-nums; position: relative;
+  }
+  .note-badge.note-high { background: var(--mpg-success); }
+  .note-badge.note-mid { background: var(--mpg-warning); }
+  .note-badge.note-low { background: var(--mpg-danger); }
+  .note-badge.note-none { background: var(--mpg-border-soft); color: var(--mpg-text-soft); }
+  /* Aura : QUI a beneficie/subi un effet de bonus dans ce scenario simule --
+     doree = touche par un boost (Zahia/McDo+), rouge = touche par un nerf
+     (Suarez/Cheat Code). */
+  .note-badge.aura-boost { box-shadow: 0 0 0 2px var(--mpg-surface, #fff), 0 0 0 4px var(--mpg-warning), 0 0 7px 2px var(--mpg-warning); }
+  .note-badge.aura-nerf { box-shadow: 0 0 0 2px var(--mpg-surface, #fff), 0 0 0 4px var(--mpg-danger), 0 0 7px 2px var(--mpg-danger); }
+  .captain-flag {
+    position: absolute; top: -0.25rem; right: -0.25rem; width: 0.85rem; height: 0.85rem;
+    border-radius: 50%; background: #2b6fd1; color: #fff; font-size: 0.55rem;
+    display: flex; align-items: center; justify-content: center; font-weight: 800;
+    border: 1px solid var(--mpg-surface, #fff);
+  }
+  .goal-flag {
+    position: absolute; bottom: -0.25rem; right: -0.25rem; width: 0.8rem; height: 0.8rem;
+    border-radius: 50%; background: var(--mpg-success); border: 1px solid var(--mpg-surface, #fff);
+  }
+  .real-goal-flag {
+    position: absolute; bottom: -0.25rem; left: -0.25rem; width: 0.8rem; height: 0.8rem;
+    border-radius: 50%; background: var(--mpg-title); border: 1px solid var(--mpg-surface, #fff);
+  }
+
+  .scorers-block { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.5rem; }
+  .scorer-row { display: flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; min-width: 0; }
+  .scorer-row span:not(.ball):not(.scorer-time) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .scorers-col.away .scorer-row { flex-direction: row-reverse; }
+  .ball {
+    flex: none; display: inline-block; vertical-align: middle;
+    width: 0.5rem; height: 0.5rem; border-radius: 50%; margin: 0 0.15rem;
+  }
+  /* Points de but : noir = but normal (reel), vert = but MPG (duel de
+     lignes), rouge = CSC Rotaldo, jaune = CSC classique -- #e0b400 reprend
+     exactement la teinte de la reference admin/manager.html. */
+  .ball.real { background: var(--mpg-title); }
+  .ball.mpg { background: var(--mpg-success); }
+  .ball.csc { background: var(--mpg-danger); }
+  .ball.real_og { background: #e0b400; }
+  .scorer-time { color: var(--mpg-text-soft); font-size: 0.75rem; flex: none; }
+  /* Badge de seuil sur "Joueurs sortis" -- meme composant que .note-badge
+     (colore via noteClass, comme une vraie note), juste plus petit. */
+  .note-badge.threshold-badge {
+    display: inline-flex; width: 1.3rem; height: 1.3rem; font-size: 0.6rem;
+    vertical-align: middle; margin-left: 0.3rem;
+  }
+  .no-scorer { color: var(--mpg-text-soft); font-size: 0.78rem; font-style: italic; }
+
+  @media (max-width: 640px) {
+    .player-name { font-size: 0.76rem; }
+    .note-badge { width: 1.5rem; height: 1.5rem; font-size: 0.65rem; }
+  }
 
   /* --- Simulateur --- */
   .sim-card { border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); padding: 1rem 1.25rem; margin: 1rem 0; }
@@ -60,17 +134,11 @@
     border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); padding: 0.4rem 0.5rem;
     font-size: 0.9rem; font-family: inherit; color: var(--mpg-title); background: var(--mpg-surface, #fff);
   }
-  .sim-row button {
-    background: var(--mpg-action); color: #fff; border: none; border-radius: var(--mpg-radius);
-    padding: 0.5rem 1rem; font-size: 0.9rem; font-weight: 600; cursor: pointer;
-  }
-  .sim-row button:hover { background: var(--mpg-action-hover); }
   .sim-result { display: flex; gap: 2rem; flex-wrap: wrap; margin-top: 0.5rem; }
   .sim-result .side { text-align: center; }
   .sim-result .side.me .total { color: var(--mpg-action); }
   .sim-result .total { font-size: 1.6rem; font-weight: 700; }
   .sim-result .label { font-size: 0.75rem; color: var(--mpg-text-soft); }
-  .sweep-bad { color: var(--mpg-danger); font-weight: 600; }
 
   .sim-classement { display: flex; gap: 1.75rem; flex-wrap: wrap; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px dashed var(--mpg-border-soft); }
   .sim-classement .item { text-align: center; min-width: 6rem; }
@@ -80,6 +148,8 @@
   .sim-classement .item .rang .delta.up { color: var(--mpg-success); }
   .sim-classement .item .rang .delta.down { color: var(--mpg-danger); }
   .sim-classement .item .label { font-size: 0.72rem; color: var(--mpg-text-soft); text-transform: uppercase; letter-spacing: 0.02em; }
+  .sweep-bad { color: var(--mpg-danger); font-weight: 600; }
+  .sweep-baseline td { font-weight: 700; background: var(--mpg-action-soft, rgba(0,0,0,0.03)); border-bottom: 2px solid var(--mpg-border-soft); }
 
   .status-msg { color: var(--mpg-text-soft); font-size: 0.9rem; margin: 1rem 0; }
   .status-msg.err { color: var(--mpg-danger); }
@@ -123,13 +193,9 @@
   // Retour utilisateur 2026-08-25 : "il faudrait que toutes les divisions en
   // cours soient disponibles, quitte a mettre des expanders ... pouvoir
   // faire toutes les simulations pour tester a quelle place on serait
-  // potentiellement au classement de sa ligue, au general". Cette premiere
-  // version agrege le simulateur EXISTANT (score/delta par match, cf.
-  // match.html) sur TOUTES les divisions en direct du manager choisi --
-  // PAS encore le rang de ligue/Super Classement simule (recalculer le
-  // classement complet d'une division -- Pichichi/Mur/Boss dependent de
-  // TOUS les matchs, pas juste le mien -- est un chantier plus gros, laisse
-  // pour une prochaine etape, cf. discussion 2026-08-25).
+  // potentiellement au classement de sa ligue, au general". Agrege le
+  // simulateur complet (score/detail/classement projete, cf. match.html)
+  // sur TOUTES les divisions en direct du manager choisi.
   const STORAGE_KEY = "mpg_live_user_id";
 
   async function initGlobalManagerSelector() {
@@ -204,9 +270,14 @@
   // (un par division en direct) coexistent sur la meme page, cf.
   // createBlockController ci-dessous qui scope toutes ses recherches DOM
   // via root.querySelector(".xxx") plutot que document.getElementById.
+  // Exclut les remplacants entres (replaced_starter renseigne) -- meme
+  // correctif que simulate_api/app.py::live_scenario_sweep et
+  // site/match.html : un manager choisit sa cible McDo+ AVANT le coup
+  // d'envoi, seul le titulaire DECLARE a ce moment-la est une cible
+  // plausible.
   function targetSelectHtml(myTeam, selectedId, hidden) {
     const players = Object.entries(myTeam.players || {})
-      .filter(([, p]) => p.position !== 1)
+      .filter(([, p]) => p.position !== 1 && !p.replaced_starter)
       .map(([id, p]) => ({ id, name: p.name }));
     const outPlayers = (myTeam.out || [])
       .filter(p => p.is_default_rating)
@@ -224,63 +295,203 @@
 
   const POSITION_LABEL = { 1: "G", 2: "D", 3: "M", 4: "A" };
 
-  function playerRowHtml(player) {
-    const mpgTag = player.but_mpg_bonus ? `<span class="mpg-tag mpg-tag-gold">but MPG</span>` : "";
+  // Memes 3 paliers que admin/manager.html (>=6 vert, >=4.5 or, sinon
+  // rouge), meme logique d'aura (BOOST_TAGS -> doree, NERF_TAGS -> rouge,
+  // cf. core/live_scoring.py qui pose deja p["bonus_tag"] sur chaque
+  // joueur touche par un effet simule).
+  function noteClass(note) {
+    if (note === null || note === undefined) return "note-none";
+    if (note >= 6) return "note-high";
+    if (note >= 4.5) return "note-mid";
+    return "note-low";
+  }
+  const BONUS_TAG_LABELS = {
+    boostAllPlayers: "Zahia (+0,5)", boostOnePlayer: "McDo+ (+1)",
+    nerfGoalkeeper: "Suarez (-1)", nerfAllPlayers: "Cheat Code (-0,5)",
+  };
+  const BOOST_TAGS = new Set(["boostAllPlayers", "boostOnePlayer"]);
+  const NERF_TAGS = new Set(["nerfGoalkeeper", "nerfAllPlayers"]);
+
+  function playerBadge(p, isCaptain) {
+    const note = p.effective_note;
+    const cls = noteClass(note);
+    const noteText = fmt(note);
+    const mpgGoalFlag = p.but_mpg_bonus ? `<span class="goal-flag" title="But MPG"></span>` : "";
+    const realGoalFlag = p.real_goals > 0 ? `<span class="real-goal-flag" title="But réel"></span>` : "";
+    const auraCls = BOOST_TAGS.has(p.bonus_tag) ? " aura-boost" : NERF_TAGS.has(p.bonus_tag) ? " aura-nerf" : "";
+    const title = p.bonus_tag ? ` title="${BONUS_TAG_LABELS[p.bonus_tag] || p.bonus_tag}"` : "";
+    return `<div class="note-badge ${cls}${auraCls}"${title}>${noteText}${isCaptain ? `<span class="captain-flag">C</span>` : ""}${mpgGoalFlag}${realGoalFlag}</div>`;
+  }
+
+  function benchBadge(p) {
+    const cls = noteClass(p.note_finale);
+    return `<div class="note-badge ${cls}">${fmt(p.note_finale)}</div>`;
+  }
+
+  function playersByPosition(team) {
+    const groups = { 1: [], 2: [], 3: [], 4: [] };
+    Object.entries(team.players || {}).forEach(([playerId, p]) => {
+      if (groups[p.position]) groups[p.position].push({ ...p, playerId });
+    });
+    return groups;
+  }
+
+  function lineAvgText(team, pos) {
+    const avg = (team.line_averages || {})[pos];
+    return avg === null || avg === undefined ? null : fmt(avg);
+  }
+
+  function positionLabelHtml(pos, homeTeam, awayTeam) {
+    const homeAvg = lineAvgText(homeTeam, pos);
+    const awayAvg = lineAvgText(awayTeam, pos);
+    if (homeAvg === null && awayAvg === null) {
+      return `<div class="position-label">${POSITION_LABEL[pos]}</div>`;
+    }
     return `
-      <div class="player-row">
-        <span class="pos">${POSITION_LABEL[player.position] || "?"}</span>
-        <span class="pname">${player.name}</span>
-        <span class="pnote">${fmt(player.effective_note)}</span>
-        ${mpgTag}
+      <div class="position-label line-avg-row">
+        <span class="line-avg">${homeAvg ?? ""}</span>
+        <span>${POSITION_LABEL[pos]} &middot; moy. ligne</span>
+        <span class="line-avg">${awayAvg ?? ""}</span>
       </div>`;
   }
 
-  function benchRowHtml(player) {
-    const enteredTag = player.entered ? `<span class="mpg-tag mpg-tag-neutral">entré</span>` : "";
-    return `
-      <div class="player-row bench-row">
-        <span class="pos">${POSITION_LABEL[player.position] || "?"}</span>
-        <span class="pname">${player.name}</span>
-        <span class="pnote">${fmt(player.note_finale)}</span>
-        ${enteredTag}
-      </div>`;
+  function playersHtml(match) {
+    const homeGroups = playersByPosition(match.home);
+    const awayGroups = playersByPosition(match.away);
+    const homeCaptainId = Object.keys(match.home.players || {}).find(id => match.home.players[id].bonus_capitaine > 0);
+    const awayCaptainId = Object.keys(match.away.players || {}).find(id => match.away.players[id].bonus_capitaine > 0);
+
+    return [1, 2, 3, 4].map(pos => {
+      const homeList = homeGroups[pos], awayList = awayGroups[pos];
+      const maxRows = Math.max(homeList.length, awayList.length);
+      let rows = "";
+      for (let i = 0; i < maxRows; i++) {
+        const hp = homeList[i], ap = awayList[i];
+        rows += `
+          <div class="player-row">
+            <div class="player">
+              ${hp ? playerBadge(hp, hp.playerId === homeCaptainId) : ""}
+              <span class="player-name">${hp ? hp.name : ""}${hp && hp.replaced_starter ? `<span class="replaced-note">&#8618; remplace ${hp.replaced_starter}</span>` : ""}</span>
+            </div>
+            <div class="row-sep">&middot;</div>
+            <div class="player away">
+              ${ap ? playerBadge(ap, ap.playerId === awayCaptainId) : ""}
+              <span class="player-name">${ap ? ap.name : ""}${ap && ap.replaced_starter ? `<span class="replaced-note">&#8618; remplace ${ap.replaced_starter}</span>` : ""}</span>
+            </div>
+          </div>`;
+      }
+      return `<div class="position-block">${positionLabelHtml(pos, match.home, match.away)}${rows}</div>`;
+    }).join("");
   }
 
-  function goalGroupHtml(team) {
-    const events = team.goal_events || [];
-    const real = events.filter(e => e.type === "real" || e.type === "real_og");
-    const mpg = events.filter(e => e.type === "mpg");
-    const csc = events.filter(e => e.type === "csc");
-    const line = (label, list, withTime) => {
-      if (!list.length) return "";
-      const names = list.map(e => withTime && e.time ? `${e.name} (${e.time})` : e.name).join(", ");
-      return `<div class="goal-group"><strong>${label}</strong> : ${names}</div>`;
+  // "Joueurs sortis" -- titulaires D'ORIGINE reellement sortis
+  // (core/live_scoring.py, champ "out"), categorie a part de "Titulaires".
+  const OUT_REASON_LABELS = { tactique: "tactique", obligatoire: "obligatoire" };
+
+  function outBadge(p) {
+    return `<div class="note-badge ${noteClass(p.note_finale)}">${fmt(p.note_finale)}</div>`;
+  }
+
+  function outRowHtml(p) {
+    if (!p) return { badge: "", name: "" };
+    let thresholdBadge = "";
+    if (p.seuil_configure !== undefined && p.seuil_configure !== null) {
+      thresholdBadge = `<span class="note-badge threshold-badge ${noteClass(p.seuil_configure)}" title="Seuil de remplacement configure">&lt;${fmt(p.seuil_configure)}</span>`;
+    }
+    const reason = OUT_REASON_LABELS[p.reason] || p.reason;
+    const bonusDiffers = (p.note_avec_bonus !== undefined && p.note_avec_bonus !== p.note_finale)
+      || (p.note_seuil !== undefined && p.note_seuil !== p.note_finale);
+    const bonusDetail = bonusDiffers
+      ? `<span class="replaced-note">bonus : ${fmt(p.note_avec_bonus)} &middot; note comparee au seuil : ${fmt(p.note_seuil)}</span>`
+      : "";
+    return {
+      badge: outBadge(p),
+      name: `${p.name}<span class="replaced-note">&rarr; ${p.replaced_by} (${reason})${thresholdBadge}</span>${bonusDetail}`,
     };
-    const html = line("Buts réels", real, true) + line("Buts MPG", mpg, false) + line("CSC", csc, false);
-    return html || `<div class="goal-group none">Aucun but pour le moment.</div>`;
   }
 
-  function teamColumnHtml(team, displayName) {
-    const starters = Object.values(team.players || {}).sort((a, b) => a.position - b.position);
-    const bench = team.bench || [];
+  function outBlockHtml(home, away) {
+    const homeOut = home.out || [];
+    const awayOut = away.out || [];
+    if (!homeOut.length && !awayOut.length) {
+      return `<div class="position-block"><div class="position-label">Joueurs sortis</div><div class="no-scorer" style="text-align:center; padding:0.25rem 0;">Aucun remplacement effectif pour l'instant</div></div>`;
+    }
+    const maxRows = Math.max(homeOut.length, awayOut.length);
+    let rows = "";
+    for (let i = 0; i < maxRows; i++) {
+      const hp = outRowHtml(homeOut[i]), ap = outRowHtml(awayOut[i]);
+      rows += `
+        <div class="player-row">
+          <div class="player">${hp.badge}<span class="player-name">${hp.name}</span></div>
+          <div class="row-sep">&middot;</div>
+          <div class="player away">${ap.badge}<span class="player-name">${ap.name}</span></div>
+        </div>`;
+    }
+    return `<div class="position-block"><div class="position-label">Joueurs sortis</div>${rows}</div>`;
+  }
+
+  function benchBlockHtml(home, away) {
+    const homeBench = (home.bench || []).filter(p => !p.entered);
+    const awayBench = (away.bench || []).filter(p => !p.entered);
+    if (!homeBench.length && !awayBench.length) return "";
+    const maxRows = Math.max(homeBench.length, awayBench.length);
+    let rows = "";
+    for (let i = 0; i < maxRows; i++) {
+      const hp = homeBench[i], ap = awayBench[i];
+      rows += `
+        <div class="player-row">
+          <div class="player">${hp ? benchBadge(hp) : ""}<span class="player-name">${hp ? hp.name : ""}</span></div>
+          <div class="row-sep">&middot;</div>
+          <div class="player away">${ap ? benchBadge(ap) : ""}<span class="player-name">${ap ? ap.name : ""}</span></div>
+        </div>`;
+    }
+    return `<div class="position-block"><div class="position-label">Remplaçants non entrés</div>${rows}</div>`;
+  }
+
+  // Feuille de but UNIFIEE et triee chronologiquement -- reel, MPG (duel de
+  // lignes), CSC classique (or) et CSC Rotaldo (rouge) se melangent dans la
+  // MEME liste, distingues par la couleur du point.
+  function scorersHtml(team) {
+    const events = team.goal_events || [];
+    if (!events.length) return `<div class="no-scorer">—</div>`;
+    const sorted = [...events].sort((a, b) => (a.time ? parseInt(a.time) : 999) - (b.time ? parseInt(b.time) : 999));
+    return sorted.map(ev => `
+      <div class="scorer-row">
+        <span class="ball ${ev.type}"></span>
+        <span>${ev.name}</span>
+        ${ev.time ? `<span class="scorer-time">${ev.time}</span>` : ""}
+      </div>`).join("");
+  }
+
+  function compositionsHtml(match, homeName, awayName) {
     return `
-      <div class="team-column">
-        <h2>${displayName}</h2>
-        ${starters.map(playerRowHtml).join("")}
-        <h3>Banc</h3>
-        ${bench.length ? bench.map(benchRowHtml).join("") : `<p class="meta">—</p>`}
-        <h3>Buts</h3>
-        ${goalGroupHtml(team)}
+      <div class="lineups-card">
+        <div class="comp-teams">
+          <div class="comp-team-name">${homeName}</div>
+          <div class="comp-team-name away">${awayName}</div>
+        </div>
+        ${playersHtml(match)}
+        ${outBlockHtml(match.home, match.away)}
+        ${benchBlockHtml(match.home, match.away)}
+        <div class="position-label">Buts</div>
+        <div class="scorers-block">
+          <div class="scorers-col">${scorersHtml(match.home)}</div>
+          <div class="scorers-col away">${scorersHtml(match.away)}</div>
+        </div>
       </div>`;
   }
 
-  function matchHeaderHtml(match, homeName, awayName, gameWeek) {
+  function matchHeaderHtml(match, homeName, awayName, gameWeek, simulated) {
+    // `simulated` : distingue le score REEL (chargement initial) du score
+    // recalcule apres un coup simule -- sans ca, rien ne signale que ce
+    // nombre en gros n'est plus le resultat MPG officiel.
+    const meta = simulated ? `Journée ${gameWeek} · <em>scénario simulé</em>` : `Journée ${gameWeek}`;
     return `
       <div class="match-header">
         <div class="team home"><div class="team-name">${homeName}</div></div>
         <div>
           <div class="score">${fmt(match.home.score)} – ${fmt(match.away.score)}</div>
-          <div class="meta">Journée ${gameWeek}</div>
+          <div class="meta">${meta}</div>
         </div>
         <div class="team away"><div class="team-name">${awayName}</div></div>
       </div>`;
@@ -301,6 +512,48 @@
           <div class="label">Adversaire (${fmt(opponent.score)} buts)</div>
         </div>
       </div>`;
+  }
+
+  // Impact projeté sur le classement (division/ligue/Super Classement) du
+  // scénario "Mon coup" en cours -- /simulate-classement recalcule la
+  // division du manager avec son coup hypothétique tout en lisant les
+  // AUTRES matchs/divisions/ligues tels qu'écrits par le dernier tick live.
+  function rangDeltaHtml(current, baseline) {
+    if (!baseline || current.rang === baseline.rang) return "";
+    const delta = baseline.rang - current.rang; // positif = amélioration (rang plus petit)
+    const cls = delta > 0 ? "up" : "down";
+    return ` <span class="delta ${cls}">${delta > 0 ? "▲+" : "▼"}${delta}</span>`;
+  }
+  function classementItemHtml(label, current, baseline) {
+    if (!current) return `<div class="item"><div class="rang">—</div><div class="label">${label}</div></div>`;
+    return `
+      <div class="item">
+        <div class="rang">${current.rang}<span class="of">/${current.size}</span>${rangDeltaHtml(current, baseline)}</div>
+        <div class="label">${label} · ${fmt(current.points)} pts</div>
+      </div>`;
+  }
+  // Renvoie les items SEULS (pas de wrapper .sim-classement ici) -- le
+  // conteneur qui reçoit ce HTML (root.querySelector(".sim-classement"))
+  // porte déjà cette classe.
+  function classementHtml(data, baseline) {
+    return `
+      ${classementItemHtml("Division", data.division, baseline && baseline.division)}
+      ${classementItemHtml("Ligue", data.league, baseline && baseline.league)}
+      ${data.superClassement ? classementItemHtml("Super Classement", data.superClassement, baseline && baseline.superClassement) : ""}`;
+  }
+  async function loadClassement(ctx, ownBonus, targetPlayerId) {
+    const url = new URL(`${SIMULATE_API_BASE}/simulate-classement`);
+    url.searchParams.set("shortId", ctx.leagueCode);
+    url.searchParams.set("season", ctx.season);
+    url.searchParams.set("division", ctx.division);
+    url.searchParams.set("gameweek", ctx.gameWeek);
+    url.searchParams.set("userId", ctx.userId);
+    if (ownBonus) url.searchParams.set("ownBonus", ownBonus);
+    if (targetPlayerId) url.searchParams.set("targetPlayerId", targetPlayerId);
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    return data;
   }
 
   function classifyResult(myScore, theirScore) {
@@ -332,7 +585,7 @@
     return `
       <p class="meta" style="margin:0.75rem 0 0.25rem;">Chances de résultat (à l'instant T)</p>
       <div style="display:flex; gap:0.25rem;">
-        ${seg("success", odds.win)}${seg("steel", odds.draw)}${seg("danger", odds.loss)}
+        ${seg("success", odds.win)}${seg("gold", odds.draw)}${seg("danger", odds.loss)}
       </div>
       <p class="meta">Victoire ${odds.win}% · Nul ${odds.draw}% · Défaite ${odds.loss}% -- état actuel + 1 poids par type de bonus adverse possible (${odds.total} au total).</p>`;
   }
@@ -342,6 +595,18 @@
     return swing > 0 ? `+${swing}` : `${swing}`;
   }
   function sweepTableHtml(data, isHome) {
+    // Ligne "Aucun" mise en avant (fond + bordure) -- l'adversaire peut
+    // aussi ne jouer aucun bonus, c'est le scenario de reference.
+    const baseline = data.baseline;
+    const baselineHome = isHome ? baseline.myScore : baseline.theirScore;
+    const baselineAway = isHome ? baseline.theirScore : baseline.myScore;
+    const baselineRow = `
+      <tr class="sweep-baseline">
+        <td title="L'adversaire ne joue aucun bonus">Aucun</td>
+        <td class="num">${baselineHome}</td>
+        <td class="num">${baselineAway}</td>
+        <td class="num">=</td>
+      </tr>`;
     const rows = data.scenarios.map(s => {
       const homeScore = isHome ? s.myScore : s.theirScore;
       const awayScore = isHome ? s.theirScore : s.myScore;
@@ -360,56 +625,10 @@
       <div class="table-wrap">
         <table class="mpg-table">
           <thead><tr><th></th><th class="num">Domicile</th><th class="num">Extérieur</th><th class="num">Δ</th></tr></thead>
-          <tbody>${rows}</tbody>
+          <tbody>${baselineRow}${rows}</tbody>
         </table>
       </div>
       <p class="meta">Δ = évolution de la différence de buts en ma faveur si l'adversaire joue ce bonus (négatif = mauvais pour moi).</p>`;
-  }
-
-  // Impact projeté sur le classement (division/ligue/Super Classement) du
-  // scénario "Mon coup" en cours -- retour utilisateur 2026-08-26,
-  // "s'assurer de la simulation des classements ... en prenant en compte
-  // les résultats de tous les matchs en cours dans les différents
-  // championnats" -- même logique que site/match.html, portée ici en
-  // scopant chaque appel à `ctx` (un bloc par match en direct, cf.
-  // createBlockController).
-  function rangDeltaHtml(current, baseline) {
-    if (!baseline || current.rang === baseline.rang) return "";
-    const delta = baseline.rang - current.rang; // positif = amélioration (rang plus petit)
-    const cls = delta > 0 ? "up" : "down";
-    return ` <span class="delta ${cls}">${delta > 0 ? "▲+" : "▼"}${delta}</span>`;
-  }
-  function classementItemHtml(label, current, baseline) {
-    if (!current) return `<div class="item"><div class="rang">—</div><div class="label">${label}</div></div>`;
-    return `
-      <div class="item">
-        <div class="rang">${current.rang}<span class="of">/${current.size}</span>${rangDeltaHtml(current, baseline)}</div>
-        <div class="label">${label} · ${fmt(current.points)} pts</div>
-      </div>`;
-  }
-  // Renvoie les items SEULS (pas de wrapper .sim-classement ici) -- le
-  // conteneur qui reçoit ce HTML (root.querySelector(".sim-classement"))
-  // porte déjà cette classe (retour utilisateur 2026-08-27, testé
-  // interactivement : un wrapper ici doublait .sim-classement en imbriqué).
-  function classementHtml(data, baseline) {
-    return `
-      ${classementItemHtml("Division", data.division, baseline && baseline.division)}
-      ${classementItemHtml("Ligue", data.league, baseline && baseline.league)}
-      ${data.superClassement ? classementItemHtml("Super Classement", data.superClassement, baseline && baseline.superClassement) : ""}`;
-  }
-  async function loadClassement(ctx, ownBonus, targetPlayerId) {
-    const url = new URL(`${SIMULATE_API_BASE}/simulate-classement`);
-    url.searchParams.set("shortId", ctx.leagueCode);
-    url.searchParams.set("season", ctx.season);
-    url.searchParams.set("division", ctx.division);
-    url.searchParams.set("gameweek", ctx.gameWeek);
-    url.searchParams.set("userId", ctx.userId);
-    if (ownBonus) url.searchParams.set("ownBonus", ownBonus);
-    if (targetPlayerId) url.searchParams.set("targetPlayerId", targetPlayerId);
-    const res = await fetch(url);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || res.statusText);
-    return data;
   }
 
   function expanderShellHtml(row, league, theme, openByDefault) {
@@ -431,7 +650,6 @@
             <div class="sim-row">
               <label>Mon coup<select class="sim-own-bonus"></select></label>
               <span class="sim-target-wrap"></span>
-              <button class="sim-run-btn">Simuler</button>
             </div>
             <div class="sim-status status-msg">Chargement des compositions...</div>
             <div class="sim-result"></div>
@@ -449,6 +667,7 @@
   async function createBlockController(root, ctx) {
     let lastBaselineMatch = null;
     let lastClassementBaseline = null;
+    let homeName = "", awayName = "";
 
     function refreshClassement(ownBonus, targetPlayerId, baseline) {
       const el = root.querySelector(".sim-classement");
@@ -488,6 +707,12 @@
       const myTeam = meIsHome ? lastBaselineMatch.home : lastBaselineMatch.away;
       const hidden = !BONUS_NEEDS_TARGET.has(ownBonus);
       wrap.innerHTML = `<label>Cible (McDo+)${targetSelectHtml(myTeam, "", hidden)}</label>`;
+      // Auto-simule des qu'une cible McDo+ est choisie (pas de bouton
+      // "Simuler" -- ca ralentissait la navigation) -- le select est recree
+      // a chaque appel (innerHTML ci-dessus), le listener doit donc etre
+      // rattache a chaque fois.
+      const targetSelect = root.querySelector(".sim-target-player");
+      if (targetSelect) targetSelect.addEventListener("change", simulate);
     }
 
     async function simulate() {
@@ -520,6 +745,12 @@
         statusEl.textContent = "";
         lastBaselineMatch = data;
         resultEl.innerHTML = simResultHtml(data, ctx.userId);
+        // Rejoue l'en-tete ET les compositions avec le coup simule -- meme
+        // si le bonus change le nombre de buteurs, le score reel reste
+        // identique tant que rien n'est ecrit sur MPG (bandeau signale
+        // "scenario simule" pour eviter toute confusion).
+        root.querySelector(".match-header").innerHTML = matchHeaderHtml(data, homeName, awayName, ctx.gameWeek, true);
+        root.querySelector(".lineups").innerHTML = compositionsHtml(data, homeName, awayName);
         const meIsHome = data.home.userId === ctx.userId;
         runSweep(ownBonus, targetPlayerId, meIsHome);
         refreshClassement(ownBonus, targetPlayerId, lastClassementBaseline);
@@ -529,12 +760,15 @@
       }
     }
 
-    root.querySelector(".sim-run-btn").addEventListener("click", simulate);
-
     const statusEl = root.querySelector(".sim-status");
     const ownSelect = root.querySelector(".sim-own-bonus");
     ownSelect.innerHTML = optionsHtml(bonusOptionsForDivisionSize(ctx.divisionSize), "");
-    ownSelect.addEventListener("change", updateTargetVisibility);
+    // Auto-simule directement au changement de coup (pas de bouton
+    // "Simuler" -- ralentissait la navigation).
+    ownSelect.addEventListener("change", () => {
+      updateTargetVisibility();
+      simulate();
+    });
 
     try {
       const url = new URL(`${SIMULATE_API_BASE}/simulate-bonus`);
@@ -548,10 +782,10 @@
       if (!res.ok) throw new Error(data.error || res.statusText);
       lastBaselineMatch = data;
 
-      const homeName = ctx.nameFor(data.home.userId);
-      const awayName = ctx.nameFor(data.away.userId);
+      homeName = ctx.nameFor(data.home.userId);
+      awayName = ctx.nameFor(data.away.userId);
       root.querySelector(".match-header").innerHTML = matchHeaderHtml(data, homeName, awayName, ctx.gameWeek);
-      root.querySelector(".lineups").innerHTML = teamColumnHtml(data.home, homeName) + teamColumnHtml(data.away, awayName);
+      root.querySelector(".lineups").innerHTML = compositionsHtml(data, homeName, awayName);
       const opponentName = data.home.userId === ctx.userId ? awayName : homeName;
       root.querySelector(".summary-score").textContent = `vs ${opponentName} · ${fmt(data.home.score)} – ${fmt(data.away.score)}`;
 
@@ -620,12 +854,9 @@
 
     statusEl.textContent = "";
     // Repli sur des expanders REPLIES par defaut des que plusieurs matchs
-    // sont en direct en meme temps (retour utilisateur 2026-08-25, "on aura
-    // besoin d'expanders pour ne pas avoir a scroller indefiniment") --
-    // ouvrir TOUS les blocs par defaut (comportement precedent) revenait a
-    // tout afficher en meme temps, aucun gain reel par rapport a l'absence
-    // d'expander. Un seul match en direct reste ouvert d'office (rien a
-    // gagner a le forcer en cliquer-pour-voir).
+    // sont en direct en meme temps -- ouvrir TOUS les blocs par defaut
+    // revenait a tout afficher en meme temps, aucun gain reel par rapport
+    // a l'absence d'expander. Un seul match en direct reste ouvert d'office.
     const openByDefault = myLiveRows.length === 1;
     listEl.innerHTML = myLiveRows.map(row => {
       const league = leaguesByCode[row.league_code];
