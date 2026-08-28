@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MPG Live -- Compo</title>
+<link rel="stylesheet" href="mpg-tokens.css">
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: var(--mpg-title); }
+  h1 { font-size: 1.4rem; margin: 0 0 0.25rem; }
+  .meta { color: var(--mpg-text-soft); font-size: 0.85rem; }
+
+  .disclaimer {
+    border: 0.5px solid color-mix(in srgb, var(--mpg-warning) 45%, transparent);
+    background: var(--mpg-warning-soft); border-radius: var(--mpg-radius);
+    padding: 0.85rem 1.1rem; margin: 1.25rem 0; font-size: 0.85rem; color: var(--mpg-title);
+  }
+  .disclaimer strong { display: block; margin-bottom: 0.2rem; }
+
+  /* --- Expanders (une ligue suivie = un <details>) --- */
+  .compo-expander {
+    border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius); margin: 0.75rem 0; overflow: hidden;
+  }
+  .compo-expander summary {
+    display: flex; align-items: center; gap: 0.6rem; padding: 0.85rem 1.1rem; cursor: pointer;
+    list-style: none; font-size: 0.95rem;
+  }
+  .compo-expander summary::-webkit-details-marker { display: none; }
+  .compo-expander summary::before { content: "▸"; color: var(--mpg-text-off); transition: transform 150ms ease; }
+  .compo-expander[open] summary::before { transform: rotate(90deg); }
+  .summary-dot { width: 0.6rem; height: 0.6rem; border-radius: 999px; flex-shrink: 0; }
+  .summary-league { font-weight: 700; }
+  .summary-division { color: var(--mpg-text-soft); font-size: 0.85rem; }
+  .summary-formation { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--mpg-text-soft); }
+  .expander-body { padding: 0 1.1rem 1.1rem; border-top: 0.5px solid var(--mpg-border-soft); }
+
+  .position-block { margin-top: 0.5rem; }
+  .position-label {
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--mpg-text-soft); margin: 0.9rem 0 0.35rem;
+    border-top: 0.5px solid var(--mpg-border-soft); padding-top: 0.5rem;
+  }
+  .player-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.2rem 0; }
+  .player-name { font-size: 0.88rem; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .player-name.bench { color: var(--mpg-text-soft); }
+
+  .note-badge {
+    flex: none; width: 1.7rem; height: 1.7rem; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.72rem; font-weight: 700; color: #fff;
+    font-variant-numeric: tabular-nums; position: relative;
+  }
+  .note-badge.note-high { background: var(--mpg-success); }
+  .note-badge.note-mid { background: var(--mpg-warning); }
+  .note-badge.note-low { background: var(--mpg-danger); }
+  .note-badge.note-none { background: var(--mpg-border-soft); color: var(--mpg-text-soft); }
+  .captain-flag {
+    position: absolute; top: -0.25rem; right: -0.25rem; width: 0.85rem; height: 0.85rem;
+    border-radius: 50%; background: #2b6fd1; color: #fff; font-size: 0.55rem;
+    display: flex; align-items: center; justify-content: center; font-weight: 800;
+    border: 1px solid var(--mpg-surface, #fff);
+  }
+
+  .status-msg { color: var(--mpg-text-soft); font-size: 0.9rem; margin: 1rem 0; }
+  .status-msg.err { color: var(--mpg-danger); }
+</style>
+</head>
+<body>
+
+<header class="mpg-banner mpg-no-print">
+  <div class="mpg-banner-inner">
+    <a class="mpg-banner-title" href="index.html">MPG part en LIVE</a>
+    <nav class="mpg-banner-nav">
+      <a class="mpg-banner-item" href="index.html">Accueil</a>
+      <a class="mpg-banner-item" href="compo.html">Compo</a>
+      <a class="mpg-banner-item" href="simulations.html">Live</a>
+    </nav>
+    <label class="mpg-banner-manager mpg-no-print">
+      <select id="global-manager"><option value="">— Manager —</option></select>
+    </label>
+  </div>
+</header>
+<script>
+  for (const a of document.querySelectorAll(".mpg-banner-item")) {
+    if (a.pathname === location.pathname) a.classList.add("is-active");
+  }
+</script>
+
+<h1>Compo</h1>
+<div class="meta">La composition recommandée pour chacune de tes ligues, à recopier toi-même dans l'appli MPG.</div>
+<div class="disclaimer">
+  <strong>À vérifier avant de soumettre</strong>
+  Recommandation basée sur la moyenne de points MPG de chaque joueur possédé -- elle ne tient
+  compte ni des blessures/suspensions ni de l'adversaire à venir. Rien n'est envoyé à MPG
+  automatiquement : c'est à toi de recopier cette compo dans la vraie appli.
+</div>
+
+<div id="status" class="status-msg">Chargement...</div>
+<div id="list"></div>
+
+<script type="module">
+  import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+  const SUPABASE_URL = "https://zvmngpoogwjiknqrkjky.supabase.co";
+  const SUPABASE_ANON_KEY = "sb_publishable_YhAD0_spZJF58Dt_TTQplQ_VrFSKRK8";
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const params = new URLSearchParams(location.search);
+
+  const STORAGE_KEY = "mpg_live_user_id";
+
+  async function initGlobalManagerSelector() {
+    const { data } = await supabase.from("managers").select("user_id, real_name").order("real_name");
+    const select = document.getElementById("global-manager");
+    select.innerHTML = `<option value="">— Manager —</option>`
+      + (data || []).map(m => `<option value="${m.user_id}">${m.real_name}</option>`).join("");
+    const wanted = params.get("user") || localStorage.getItem(STORAGE_KEY) || "";
+    if (wanted) select.value = wanted;
+    select.addEventListener("change", () => {
+      const uid = select.value;
+      if (uid) localStorage.setItem(STORAGE_KEY, uid); else localStorage.removeItem(STORAGE_KEY);
+      const url = new URL(location.href);
+      if (uid) url.searchParams.set("user", uid); else url.searchParams.delete("user");
+      location.href = url.toString();
+    });
+    return wanted;
+  }
+
+  // Meme mapping que index.html/division.html/ligue.html/simulations.html.
+  const LEAGUE_THEME_BY_NOM = {
+    "ligue_camembert": "l1",
+    "rosbeef_league": "pl",
+    "liga_tapas": "liga",
+    "lega_calzone": "seriea",
+    "ligue_2_ekt": "l2",
+    "ligue_des_champignons": "ldc",
+  };
+  const THEME_BAR = {
+    l1: "var(--mpg-league-l1)", pl: "var(--mpg-league-pl)", liga: "var(--mpg-league-liga)",
+    seriea: "var(--mpg-league-seriea)", l2: "var(--mpg-league-l2)", ldc: "var(--mpg-league-ldc)",
+    neutral: "var(--mpg-text-off)",
+  };
+  const THEME_TEXT = {
+    l1: "var(--mpg-league-l1)", pl: "var(--mpg-league-pl)", liga: "var(--mpg-league-liga)",
+    seriea: "var(--mpg-league-seriea-text)", l2: "var(--mpg-league-l2-text)", ldc: "var(--mpg-league-ldc)",
+    neutral: "var(--mpg-text-soft)",
+  };
+  function leagueTheme(nom) {
+    return LEAGUE_THEME_BY_NOM[(nom || "").toLowerCase()] || "neutral";
+  }
+
+  const SIMULATE_API_BASE = "https://mpg-live.onrender.com";
+  const POSITION_LABEL = { 1: "G", 2: "D", 3: "M", 4: "A" };
+
+  function fmt(n) {
+    if (n === null || n === undefined) return "–";
+    return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/0$/, "").replace(/\.$/, "");
+  }
+
+  // Memes 3 paliers que le reste du site (noteClass) -- la projection est
+  // une moyenne de points MPG, sur la meme echelle qu'une note reelle.
+  function noteClass(value) {
+    if (value === null || value === undefined) return "note-none";
+    if (value >= 6) return "note-high";
+    if (value >= 4.5) return "note-mid";
+    return "note-low";
+  }
+
+  function playerRowHtml(p, isCaptain, isBench) {
+    const cls = noteClass(p.projection);
+    return `
+      <div class="player-row">
+        <div class="note-badge ${cls}">${fmt(p.projection)}${isCaptain ? `<span class="captain-flag">C</span>` : ""}</div>
+        <span class="player-name${isBench ? " bench" : ""}">${p.name}</span>
+      </div>`;
+  }
+
+  function recommendationHtml(rec) {
+    const groups = { 1: [], 2: [], 3: [], 4: [] };
+    rec.starters.forEach(p => { if (groups[p.position]) groups[p.position].push(p); });
+    const lines = [1, 2, 3, 4].map(pos => {
+      if (!groups[pos].length) return "";
+      const rows = groups[pos].map(p => playerRowHtml(p, p.playerId === rec.captainId, false)).join("");
+      return `<div class="position-block"><div class="position-label">${POSITION_LABEL[pos]}</div>${rows}</div>`;
+    }).join("");
+    const bench = rec.bench.length
+      ? `<div class="position-block"><div class="position-label">Banc (par priorité)</div>${rec.bench.map(p => playerRowHtml(p, false, true)).join("")}</div>`
+      : "";
+    return `<p class="meta" style="margin:0.75rem 0 0;">Formation recommandée : <strong>${rec.formation}</strong></p>${lines}${bench}`;
+  }
+
+  async function loadRecommendation(root, ctx) {
+    const bodyEl = root.querySelector(".expander-body");
+    const formationEl = root.querySelector(".summary-formation");
+    try {
+      const url = new URL(`${SIMULATE_API_BASE}/recommend-lineup`);
+      url.searchParams.set("shortId", ctx.leagueCode);
+      url.searchParams.set("season", ctx.season);
+      url.searchParams.set("division", ctx.division);
+      url.searchParams.set("userId", ctx.userId);
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      formationEl.textContent = data.formation;
+      bodyEl.innerHTML = recommendationHtml(data);
+    } catch (e) {
+      formationEl.textContent = "indisponible";
+      bodyEl.innerHTML = `<p class="status-msg err">Recommandation indisponible (${e.message}).</p>`;
+    }
+  }
+
+  function expanderShellHtml(row, league, theme, openByDefault) {
+    const name = league ? league.nom.replace(/_/g, " ") : row.league_code;
+    return `
+      <details class="compo-expander"${openByDefault ? " open" : ""}>
+        <summary>
+          <span class="summary-dot" style="background:${THEME_BAR[theme]}"></span>
+          <span class="summary-league" style="color:${THEME_TEXT[theme]}">${name}</span>
+          <span class="summary-division">Division ${row.division}</span>
+          <span class="summary-formation">Chargement...</span>
+        </summary>
+        <div class="expander-body">
+          <p class="meta">Calcul en cours...</p>
+        </div>
+      </details>`;
+  }
+
+  async function load() {
+    const userId = document.getElementById("global-manager").value;
+    const statusEl = document.getElementById("status");
+    const listEl = document.getElementById("list");
+    listEl.innerHTML = "";
+
+    if (!userId) {
+      statusEl.textContent = "Choisis un manager ci-dessus pour voir ses compositions recommandées.";
+      statusEl.className = "status-msg";
+      return;
+    }
+
+    statusEl.textContent = "Chargement...";
+    statusEl.className = "status-msg";
+
+    // PAS de filtre is_live -- une compo se recommande aussi hors journee
+    // en cours (contrairement a l'onglet Live), a partir du seul effectif
+    // possede (cf. core/lineup_recommender.py, aucune dependance a une
+    // journee precise).
+    const [{ data: divData, error }, { data: leaguesData }] = await Promise.all([
+      supabase.from("division_classement_live").select("league_code, division, data"),
+      supabase.from("leagues").select("code, nom, season_search"),
+    ]);
+
+    if (error) {
+      statusEl.textContent = "Erreur : " + error.message;
+      statusEl.className = "status-msg err";
+      return;
+    }
+
+    const leaguesByCode = Object.fromEntries((leaguesData || []).map(l => [l.code, l]));
+    const myRows = (divData || []).filter(row => (row.data || []).some(e => e.userId === userId));
+
+    if (!myRows.length) {
+      statusEl.textContent = "Aucune division trouvée pour ce manager.";
+      return;
+    }
+
+    statusEl.textContent = "";
+    const openByDefault = myRows.length === 1;
+    listEl.innerHTML = myRows.map(row => {
+      const league = leaguesByCode[row.league_code];
+      const theme = leagueTheme(league && league.nom);
+      return expanderShellHtml(row, league, theme, openByDefault);
+    }).join("");
+
+    const blocks = listEl.querySelectorAll(".compo-expander");
+    myRows.forEach((row, i) => {
+      const league = leaguesByCode[row.league_code];
+      const ctx = { leagueCode: row.league_code, season: league.season_search, division: row.division, userId };
+      loadRecommendation(blocks[i], ctx);
+    });
+  }
+
+  await initGlobalManagerSelector();
+  load();
+</script>
+
+<footer class="mpg-footer mpg-no-print">© Créé par Sep et Ilan et David (le chien)</footer>
+
+</body>
+</html>

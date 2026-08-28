@@ -43,6 +43,7 @@ from supabase import create_client
 from core.api import (
     get_division_matches, get_championship_match, get_division_info,
     get_live_total_divisions, get_division_team_names,
+    get_division_teams, get_championship_ids, get_player_pool,
 )
 from core.live_scoring import (
     compute_division_live_scores, collect_real_match_ids, VALID_BONUSES, bonus_available_for_division_size,
@@ -52,6 +53,7 @@ from core.live_projection import (
     league_setup, resolve_division_rows, resolve_league_wide_ranks_for_simulation,
     finalize_division_data, compute_super_classement,
 )
+from core.lineup_recommender import recommend_lineup
 
 app = Flask(__name__)
 
@@ -467,6 +469,70 @@ def live_scenario_sweep():
     scenarios.sort(key=lambda s: s["deltaMine"] - s["deltaTheirs"])
 
     return jsonify({"baseline": baseline, "scenarios": scenarios})
+
+
+@app.route("/recommend-lineup", methods=["GET", "OPTIONS"])
+def recommend_lineup_route():
+    """Recommandation de composition (XI/banc/capitaine) pour l'onglet "Compo"
+    -- retour utilisateur 2026-08-27, "serait-il possible de donner des
+    instructions a l'appli pour faire une compo ... et de l'envoyer vers
+    MPG pour qu'elle se fasse seule". Decision explicite APRES discussion
+    (risque CGU d'automatiser une action de jeu sur un tiers, cf. plan) :
+    ce endpoint ne fait QUE calculer/afficher, jamais ecrire sur MPG -- au
+    manager de recopier lui-meme la recommandation dans la vraie appli.
+
+    Params (query string) : shortId, season, division, userId. PAS de
+    gameweek -- l'effectif possede n'est pas specifique a une journee,
+    contrairement aux autres endpoints de ce fichier.
+
+    Renvoie {formation, starters: [{playerId, name, position, projection}],
+    bench: [...], captainId} -- 409 explicite (pas 500) si aucune formation
+    n'est realisable avec l'effectif actuel (cf. core/lineup_recommender.py::
+    recommend_lineup, ex. trop peu de joueurs fiables a un poste en tout
+    debut de saison)."""
+    if request.method == "OPTIONS":
+        return "", 204
+
+    short_id = request.args.get("shortId")
+    season = request.args.get("season")
+    division = request.args.get("division")
+    user_id = request.args.get("userId")
+    if not all([short_id, season, division, user_id]):
+        return jsonify({"error": "parametres manquants"}), 400
+    season, division = int(season), int(division)
+
+    info = get_division_info(short_id, season, division)
+    team_id = (info.get("usersTeams") or {}).get(user_id)
+    if not team_id:
+        return jsonify({"error": "Manager introuvable dans cette division"}), 404
+
+    teams = get_division_teams(short_id, season, division)
+    team = next((t for t in teams if t.get("id") == team_id), None)
+    if not team:
+        return jsonify({"error": "Equipe introuvable dans cette division"}), 404
+    squad_ids = list((team.get("squad") or {}).keys())
+
+    champ_ids = get_championship_ids()
+    champ_id = champ_ids.get(short_id)
+    if champ_id is None:
+        return jsonify({"error": "Championnat introuvable sur le dashboard MPG"}), 502
+    pool = get_player_pool(champ_id)
+
+    rec = recommend_lineup(squad_ids, pool)
+    if rec is None:
+        return jsonify({"error": "Aucune formation réalisable avec cet effectif pour l'instant (pas assez de joueurs fiables à un poste -- souvent le cas très tôt en saison)."}), 409
+
+    def resolve(entry):
+        p = pool.get(entry["playerId"], {})
+        name = f"{p.get('firstName', '')} {p.get('lastName', '')}".strip()
+        return {**entry, "name": name}
+
+    return jsonify({
+        "formation": rec["formation"],
+        "starters": [resolve(s) for s in rec["starters"]],
+        "bench": [resolve(b) for b in rec["bench"]],
+        "captainId": rec["captainId"],
+    })
 
 
 @app.route("/health", methods=["GET"])

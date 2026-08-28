@@ -90,6 +90,21 @@ def get_championship_ids(token: str = None) -> dict[str, int]:
     }
 
 
+def get_player_pool(championship_id: int, token: str = None) -> dict[str, dict]:
+    """{playerId: poolEntry} pour TOUT le pool d'un championnat reel (ex. 512
+    joueurs pour la Ligue 1) via /championship-players-pool/{championshipId}
+    -- reindexe par id (l'API renvoie {"poolPlayers": [...]} en liste).
+    Chaque entree : firstName/lastName/position (1-4)/clubId/quotation/
+    stats (averagePoints/averageRating/lastRatings/totalStartedMatches/
+    nextMatch avec preGameQuotations...). Retour utilisateur 2026-08-27,
+    onglet "Compo" (recommandation de composition) : remplace la copie ad
+    hoc de mpg_app/refresh_player_pool.py comme source reutilisable plutot
+    que de dupliquer une troisieme fois le meme appel."""
+    r = requests.get(f"{MPG_API}/championship-players-pool/{championship_id}", headers=build_headers(token), timeout=TIMEOUT)
+    r.raise_for_status()
+    return {p["id"]: p for p in r.json().get("poolPlayers", [])}
+
+
 def get_nearest_game_weeks(token: str = None) -> dict:
     """{championshipId (str): {"previousGameWeek": {...}, "nextGameWeek": {...}}}
     -- startDate/endDate (ISO UTC) et gameWeekNumber inclus pour chaque
