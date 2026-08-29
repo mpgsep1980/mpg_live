@@ -142,7 +142,8 @@
   .tactical-sub-row {
     display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; padding: 0.3rem 0; font-size: 0.85rem;
   }
-  .tactical-sub-row .ts-name { font-weight: 700; min-width: 8rem; }
+  .ts-jersey { display: inline-flex; width: 1.4rem; height: 1.4rem; flex: none; }
+  .ts-jersey .chip-jersey { width: 1.4rem; height: 1.4rem; object-fit: contain; }
   .tactical-sub-header { padding-bottom: 0; }
   .tactical-sub-header .meta { font-weight: 700; text-transform: uppercase; font-size: 0.68rem; letter-spacing: 0.03em; }
 </style>
@@ -357,6 +358,15 @@
           slot.subId = null;
         }
       }
+    }
+    // Filet de securite : un meme remplaçant ne peut jamais couvrir 2
+    // titulaires (regle MPG, cf. commentaire dans tacticalSlotRowHtml) --
+    // en cas de doublon improbable, seul le premier emplacement le garde.
+    const seenSubIds = new Set();
+    for (const slot of state.tacticalSubSlots) {
+      if (!slot.subId) continue;
+      if (seenSubIds.has(slot.subId)) slot.subId = null;
+      else seenSubIds.add(slot.subId);
     }
   }
 
@@ -598,19 +608,39 @@
       starterCandidates.map(p => `<option value="${p.playerId}"${p.playerId === slot.starterId ? " selected" : ""}>${p.name}</option>`)
     ).join("");
 
+    // Un remplaçant deja designe ailleurs ne peut pas couvrir un 2e
+    // titulaire -- retour utilisateur 2026-08-29, "si un joueur a deja ete
+    // choisi pour remplacer tactiquement quelqu'un, on ne peut pas le
+    // proposer a nouveau" (meme regle que le vrai MPG, deja documentee
+    // dans core/live_scoring.py : "un meme remplacant ne peut pas couvrir
+    // 2 titulaires").
+    const chosenSubIds = new Set(state.tacticalSubSlots.map(s => s.subId).filter(Boolean));
     const starter = slot.starterId && state.squad.find(p => p.playerId === slot.starterId);
     const subCandidates = starter
-      ? state.squad.filter(p => p.position === starter.position && state.benchIds.has(p.playerId))
+      ? state.squad.filter(p =>
+          p.position === starter.position && state.benchIds.has(p.playerId) &&
+          (!chosenSubIds.has(p.playerId) || p.playerId === slot.subId)
+        )
       : [];
     const subOptions = ['<option value="">—</option>'].concat(
       subCandidates.map(p => `<option value="${p.playerId}"${p.playerId === slot.subId ? " selected" : ""}>${p.name}</option>`)
     ).join("");
     const thresholdOptions = RATING_THRESHOLDS.map(v => `<option value="${v}"${v === slot.threshold ? " selected" : ""}>${fmt(v)}</option>`).join("");
 
+    // Petit apercu maillot a cote de chaque select -- coherence visuelle
+    // avec les chips terrain/banc/hors groupe (retour utilisateur
+    // 2026-08-29, "esthetiquement parlant ... la possibilite de voir le
+    // maillot des joueurs choisis dans les remplacements tactiques").
+    const sub = slot.subId && state.squad.find(p => p.playerId === slot.subId);
+    const starterJersey = starter ? `<span class="ts-jersey">${jerseyImgHtml(starter)}</span>` : `<span class="ts-jersey"></span>`;
+    const subJersey = sub ? `<span class="ts-jersey">${jerseyImgHtml(sub)}</span>` : `<span class="ts-jersey"></span>`;
+
     return `
       <div class="tactical-sub-row">
+        ${starterJersey}
         <select class="ts-starter-select" data-slot="${index}">${starterOptions}</select>
         <span class="meta">remplacé par</span>
+        ${subJersey}
         <select class="ts-sub-select" data-slot="${index}"${starter ? "" : " disabled"}>${subOptions}</select>
         <span class="meta">si note &lt;</span>
         <select class="ts-threshold-select" data-slot="${index}"${slot.subId ? "" : " disabled"}>${thresholdOptions}</select>
