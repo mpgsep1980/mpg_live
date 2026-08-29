@@ -53,7 +53,7 @@ from core.live_projection import (
     league_setup, resolve_division_rows, resolve_league_wide_ranks_for_simulation,
     finalize_division_data, compute_super_classement,
 )
-from core.lineup_recommender import recommend_lineup
+from core.lineup_recommender import recommend_lineup, full_squad, FORMATIONS
 
 app = Flask(__name__)
 
@@ -486,10 +486,20 @@ def recommend_lineup_route():
     contrairement aux autres endpoints de ce fichier.
 
     Renvoie {formation, starters: [{playerId, name, position, projection}],
-    bench: [...], captainId} -- 409 explicite (pas 500) si aucune formation
-    n'est realisable avec l'effectif actuel (cf. core/lineup_recommender.py::
-    recommend_lineup, ex. trop peu de joueurs fiables a un poste en tout
-    debut de saison)."""
+    bench: [...], captainId, squad: [...], formations: {...}}. `squad`
+    contient TOUS les joueurs possedes (y compris sans projection fiable,
+    donc `projection: null`) et `formations` le tableau des formations
+    valides -- pour que le frontend permette d'editer la recommandation a
+    la main (retour utilisateur 2026-08-29, apres premier test reel :
+    "attention au statut blesse des joueurs ... les joueurs sans notes
+    n'apparaissent pas ... il faut laisser la possibilite de modifier la
+    formation et les joueurs" -- confirme aussi que le pool MPG n'expose
+    aucun champ blessure/suspension, cf. docstring core/lineup_
+    recommender.py, donc la recommandation reste une proposition de depart
+    a corriger manuellement, jamais une decision finale). `formation`/
+    `starters`/`bench`/`captainId` restent `null`/`[]` (pas 409) si aucune
+    formation n'est automatiquement realisable -- le manager peut quand
+    meme construire sa compo a la main a partir de `squad`."""
     if request.method == "OPTIONS":
         return "", 204
 
@@ -518,20 +528,21 @@ def recommend_lineup_route():
         return jsonify({"error": "Championnat introuvable sur le dashboard MPG"}), 502
     pool = get_player_pool(champ_id)
 
-    rec = recommend_lineup(squad_ids, pool)
-    if rec is None:
-        return jsonify({"error": "Aucune formation réalisable avec cet effectif pour l'instant (pas assez de joueurs fiables à un poste -- souvent le cas très tôt en saison)."}), 409
-
     def resolve(entry):
         p = pool.get(entry["playerId"], {})
         name = f"{p.get('firstName', '')} {p.get('lastName', '')}".strip()
         return {**entry, "name": name}
 
+    rec = recommend_lineup(squad_ids, pool)
+    squad = [resolve(p) for p in full_squad(squad_ids, pool)]
+
     return jsonify({
-        "formation": rec["formation"],
-        "starters": [resolve(s) for s in rec["starters"]],
-        "bench": [resolve(b) for b in rec["bench"]],
-        "captainId": rec["captainId"],
+        "formation": rec["formation"] if rec else None,
+        "starters": [resolve(s) for s in rec["starters"]] if rec else [],
+        "bench": [resolve(b) for b in rec["bench"]] if rec else [],
+        "captainId": rec["captainId"] if rec else None,
+        "squad": squad,
+        "formations": FORMATIONS,
     })
 
 

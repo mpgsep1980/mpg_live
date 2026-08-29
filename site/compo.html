@@ -16,6 +16,19 @@
     padding: 0.85rem 1.1rem; margin: 1.25rem 0; font-size: 0.85rem; color: var(--mpg-title);
   }
   .disclaimer strong { display: block; margin-bottom: 0.2rem; }
+  .disclaimer p { margin: 0.3rem 0 0; }
+
+  .formation-row { display: flex; align-items: center; gap: 0.6rem; margin: 0.75rem 0 0.25rem; }
+  .formation-row label { font-size: 0.8rem; color: var(--mpg-text-soft); }
+  .formation-row select {
+    font-size: 0.85rem; padding: 0.25rem 0.5rem; border-radius: var(--mpg-radius);
+    border: 0.5px solid var(--mpg-border-soft); background: var(--mpg-surface, #fff); color: var(--mpg-title);
+  }
+  .reset-btn {
+    margin-left: auto; font-size: 0.78rem; background: none; border: 0.5px solid var(--mpg-border-soft);
+    border-radius: var(--mpg-radius); padding: 0.25rem 0.6rem; color: var(--mpg-text-soft); cursor: pointer;
+  }
+  .reset-btn:hover { color: var(--mpg-title); border-color: var(--mpg-text-soft); }
 
   /* --- Expanders (une ligue suivie = un <details>) --- */
   .compo-expander {
@@ -40,9 +53,19 @@
     color: var(--mpg-text-soft); margin: 0.9rem 0 0.35rem;
     border-top: 0.5px solid var(--mpg-border-soft); padding-top: 0.5rem;
   }
-  .player-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.2rem 0; }
+  .player-row {
+    display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0.4rem; margin: 0.1rem 0;
+    border-radius: var(--mpg-radius); cursor: pointer;
+  }
+  .player-row:hover { background: var(--mpg-warning-soft); }
+  .player-row.is-starter { background: color-mix(in srgb, var(--mpg-success) 10%, transparent); }
   .player-name { font-size: 0.88rem; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .player-name.bench { color: var(--mpg-text-soft); }
+  .cap-btn {
+    flex: none; background: none; border: none; cursor: pointer; font-size: 0.95rem; line-height: 1;
+    color: var(--mpg-text-soft); padding: 0.1rem 0.2rem;
+  }
+  .cap-btn.is-captain { color: #2b6fd1; }
 
   .note-badge {
     flex: none; width: 1.7rem; height: 1.7rem; border-radius: 50%;
@@ -54,12 +77,6 @@
   .note-badge.note-mid { background: var(--mpg-warning); }
   .note-badge.note-low { background: var(--mpg-danger); }
   .note-badge.note-none { background: var(--mpg-border-soft); color: var(--mpg-text-soft); }
-  .captain-flag {
-    position: absolute; top: -0.25rem; right: -0.25rem; width: 0.85rem; height: 0.85rem;
-    border-radius: 50%; background: #2b6fd1; color: #fff; font-size: 0.55rem;
-    display: flex; align-items: center; justify-content: center; font-weight: 800;
-    border: 1px solid var(--mpg-surface, #fff);
-  }
 
   .status-msg { color: var(--mpg-text-soft); font-size: 0.9rem; margin: 1rem 0; }
   .status-msg.err { color: var(--mpg-danger); }
@@ -90,9 +107,13 @@
 <div class="meta">La composition recommandée pour chacune de tes ligues, à recopier toi-même dans l'appli MPG.</div>
 <div class="disclaimer">
   <strong>À vérifier avant de soumettre</strong>
-  Recommandation basée sur la moyenne de points MPG de chaque joueur possédé -- elle ne tient
-  compte ni des blessures/suspensions ni de l'adversaire à venir. Rien n'est envoyé à MPG
-  automatiquement : c'est à toi de recopier cette compo dans la vraie appli.
+  <p>Recommandation basée sur la moyenne de points MPG de chaque joueur possédé -- elle ne tient
+  compte ni de l'adversaire à venir, ni des blessures/suspensions : <strong>ce statut n'existe pas
+  du tout dans les données MPG que l'app peut lire</strong>, donc un joueur blessé peut très bien
+  apparaître ici comme titulaire recommandé. Vérifie chaque joueur (surtout ceux sans note) dans
+  la vraie appli avant de valider.</p>
+  <p>Clique un joueur pour le titulariser/banc, choisis une formation, marque le capitaine (★) --
+  rien n'est envoyé à MPG automatiquement, c'est à toi de recopier cette compo toi-même.</p>
 </div>
 
 <div id="status" class="status-msg">Chargement...</div>
@@ -165,27 +186,141 @@
     return "note-low";
   }
 
-  function playerRowHtml(p, isCaptain, isBench) {
-    const cls = noteClass(p.projection);
+  // --- Etat editable d'un bloc ligue : formation + set de titulaires +
+  // capitaine, tous derives au depart de la recommandation mais modifiables
+  // a la main (retour utilisateur 2026-08-29, "il faut laisser la
+  // possibilite de modifier la formation et les joueurs"). squad = TOUS
+  // les joueurs possedes (y compris sans note, cf. core/lineup_
+  // recommender.py::full_squad) -- rien n'est jamais cache.
+  function makeState(data) {
+    return {
+      squad: data.squad,
+      formations: data.formations,
+      recommended: { formation: data.formation, starterIds: (data.starters || []).map(p => p.playerId), captainId: data.captainId },
+      formation: data.formation || Object.keys(data.formations)[0],
+      starterIds: new Set((data.starters || []).map(p => p.playerId)),
+      captainId: data.captainId || null,
+    };
+  }
+
+  function pickCaptain(state) {
+    let best = null;
+    for (const pid of state.starterIds) {
+      const p = state.squad.find(s => s.playerId === pid);
+      if (!p) continue;
+      if (!best || (p.projection ?? -1) > (best.projection ?? -1)) best = p;
+    }
+    return best ? best.playerId : null;
+  }
+
+  function toggleStarter(state, playerId) {
+    const player = state.squad.find(p => p.playerId === playerId);
+    if (!player) return;
+    if (state.starterIds.has(playerId)) {
+      state.starterIds.delete(playerId);
+    } else {
+      const need = (state.formations[state.formation] || {})[player.position] || 0;
+      const atPos = [...state.starterIds]
+        .map(id => state.squad.find(p => p.playerId === id))
+        .filter(p => p && p.position === player.position)
+        .sort((a, b) => (a.projection ?? -1) - (b.projection ?? -1));
+      if (atPos.length >= need && atPos.length) state.starterIds.delete(atPos[0].playerId);
+      state.starterIds.add(playerId);
+    }
+    if (!state.starterIds.has(state.captainId)) state.captainId = pickCaptain(state);
+  }
+
+  function applyFormation(state, formation) {
+    state.formation = formation;
+    const counts = state.formations[formation] || {};
+    for (const pos of [1, 2, 3, 4]) {
+      const need = counts[pos] || 0;
+      let atPos = [...state.starterIds]
+        .map(id => state.squad.find(p => p.playerId === id))
+        .filter(p => p && p.position === pos)
+        .sort((a, b) => (b.projection ?? -1) - (a.projection ?? -1));
+      while (atPos.length > need) state.starterIds.delete(atPos.pop().playerId);
+      if (atPos.length < need) {
+        const candidates = state.squad
+          .filter(p => p.position === pos && !state.starterIds.has(p.playerId))
+          .sort((a, b) => (b.projection ?? -1) - (a.projection ?? -1));
+        for (const c of candidates) {
+          if (atPos.length >= need) break;
+          state.starterIds.add(c.playerId);
+          atPos.push(c);
+        }
+      }
+    }
+    if (!state.starterIds.has(state.captainId)) state.captainId = pickCaptain(state);
+  }
+
+  function playerRowHtml(p, isStarter, isCaptain) {
     return `
-      <div class="player-row">
-        <div class="note-badge ${cls}">${fmt(p.projection)}${isCaptain ? `<span class="captain-flag">C</span>` : ""}</div>
-        <span class="player-name${isBench ? " bench" : ""}">${p.name}</span>
+      <div class="player-row${isStarter ? " is-starter" : ""}" data-player-id="${p.playerId}">
+        <div class="note-badge ${noteClass(p.projection)}">${fmt(p.projection)}</div>
+        <span class="player-name${isStarter ? "" : " bench"}">${p.name}</span>
+        ${isStarter ? `<button type="button" class="cap-btn${isCaptain ? " is-captain" : ""}" data-captain-for="${p.playerId}" title="Capitaine">${isCaptain ? "★" : "☆"}</button>` : ""}
       </div>`;
   }
 
-  function recommendationHtml(rec) {
+  function stateHtml(state) {
+    const formationOptions = Object.keys(state.formations).sort()
+      .map(f => `<option value="${f}"${f === state.formation ? " selected" : ""}>${f}</option>`).join("");
     const groups = { 1: [], 2: [], 3: [], 4: [] };
-    rec.starters.forEach(p => { if (groups[p.position]) groups[p.position].push(p); });
-    const lines = [1, 2, 3, 4].map(pos => {
+    for (const p of state.squad) if (groups[p.position]) groups[p.position].push(p);
+    const blocks = [1, 2, 3, 4].map(pos => {
       if (!groups[pos].length) return "";
-      const rows = groups[pos].map(p => playerRowHtml(p, p.playerId === rec.captainId, false)).join("");
+      const rows = groups[pos]
+        .slice()
+        .sort((a, b) => {
+          const aStart = state.starterIds.has(a.playerId), bStart = state.starterIds.has(b.playerId);
+          if (aStart !== bStart) return aStart ? -1 : 1;
+          return (b.projection ?? -1) - (a.projection ?? -1);
+        })
+        .map(p => playerRowHtml(p, state.starterIds.has(p.playerId), p.playerId === state.captainId))
+        .join("");
       return `<div class="position-block"><div class="position-label">${POSITION_LABEL[pos]}</div>${rows}</div>`;
     }).join("");
-    const bench = rec.bench.length
-      ? `<div class="position-block"><div class="position-label">Banc (par priorité)</div>${rec.bench.map(p => playerRowHtml(p, false, true)).join("")}</div>`
-      : "";
-    return `<p class="meta" style="margin:0.75rem 0 0;">Formation recommandée : <strong>${rec.formation}</strong></p>${lines}${bench}`;
+    const warning = state.recommended.formation
+      ? ""
+      : `<p class="status-msg err" style="margin:0.5rem 0 0;">Pas assez de joueurs fiables pour une recommandation automatique -- construis ta compo à la main ci-dessous.</p>`;
+    return `
+      <div class="formation-row">
+        <label>Formation <select class="formation-select">${formationOptions}</select></label>
+        <button type="button" class="reset-btn">Réinitialiser</button>
+      </div>
+      ${warning}${blocks}`;
+  }
+
+  function renderState(root, state) {
+    const bodyEl = root.querySelector(".expander-body");
+    const formationEl = root.querySelector(".summary-formation");
+    formationEl.textContent = state.formation || "—";
+    bodyEl.innerHTML = stateHtml(state);
+
+    bodyEl.querySelector(".formation-select").addEventListener("change", (e) => {
+      applyFormation(state, e.target.value);
+      renderState(root, state);
+    });
+    bodyEl.querySelector(".reset-btn").addEventListener("click", () => {
+      state.formation = state.recommended.formation || Object.keys(state.formations)[0];
+      state.starterIds = new Set(state.recommended.starterIds);
+      state.captainId = state.recommended.captainId;
+      renderState(root, state);
+    });
+    bodyEl.querySelectorAll(".cap-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        state.captainId = btn.dataset.captainFor;
+        renderState(root, state);
+      });
+    });
+    bodyEl.querySelectorAll(".player-row").forEach(row => {
+      row.addEventListener("click", () => {
+        toggleStarter(state, row.dataset.playerId);
+        renderState(root, state);
+      });
+    });
   }
 
   async function loadRecommendation(root, ctx) {
@@ -200,8 +335,7 @@
       const res = await fetch(url);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || res.statusText);
-      formationEl.textContent = data.formation;
-      bodyEl.innerHTML = recommendationHtml(data);
+      renderState(root, makeState(data));
     } catch (e) {
       formationEl.textContent = "indisponible";
       bodyEl.innerHTML = `<p class="status-msg err">Recommandation indisponible (${e.message}).</p>`;

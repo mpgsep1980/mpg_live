@@ -12,6 +12,16 @@ joueurs (core.api.get_player_pool) deja recuperes.
 V1 : XI + banc + capitaine seulement. Bonus et seuils de remplacement
 tactique reportes a une iteration suivante (raisonnement different, plus
 heuristique -- pas necessaire pour une premiere version utile).
+
+V1.1 (retour utilisateur 2026-08-29, apres premier test reel) : le pool
+MPG (championship-players-pool) n'expose AUCUN champ blessure/suspension
+(verifie sur plusieurs joueurs, dont un signale en jeu par l'utilisateur,
+"Carlos Dotor") -- limite reelle de la donnee source, pas un bug ici,
+affichee explicitement cote UI. En consequence recommend_lineup() reste
+une PROPOSITION de depart, jamais une decision finale -- full_squad()
+expose l'integralite de l'effectif (y compris joueurs sans projection
+fiable) pour que le manager puisse corriger manuellement cote frontend
+avant de recopier dans MPG.
 """
 
 # Formations MPG reelles, echantillonnees sur des divisions en direct
@@ -54,6 +64,28 @@ def player_projection(pool_entry: dict) -> float | None:
         return None
     points = stats.get("averagePoints")
     return float(points) if points is not None else None
+
+
+def full_squad(squad_ids: list[str], pool: dict[str, dict]) -> list[dict]:
+    """TOUS les joueurs POSSEDES, y compris ceux sans projection fiable
+    (cf. MIN_PLAYED_MATCHES -- projection None plutot qu'exclus). Sert a
+    l'edition manuelle cote frontend (retour utilisateur 2026-08-29,
+    "les joueurs sans notes n'apparaissent pas" -- recommend_lineup() ne
+    renvoie que les joueurs assez fiables pour etre recommandes, mais un
+    manager doit pouvoir titulariser N'IMPORTE quel joueur possede, y
+    compris un nouvel arrivant ou un joueur jamais titularise)."""
+    squad = []
+    for pid in squad_ids:
+        entry = pool.get(pid)
+        if not entry:
+            continue
+        projection = player_projection(entry)
+        squad.append({
+            "playerId": pid,
+            "position": entry.get("position"),
+            "projection": round(projection, 2) if projection is not None else None,
+        })
+    return squad
 
 
 def recommend_lineup(squad_ids: list[str], pool: dict[str, dict]) -> dict | None:
