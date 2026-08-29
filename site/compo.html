@@ -178,8 +178,9 @@
   suspension</strong> -- juste un joueur laissé de côté par son entraîneur, pour une raison qui peut
   être tout autre. MPG n'expose pas de vrai statut blessure/suspension officiel, donc vérifie
   toujours dans la vraie appli avant de valider, surtout pour les joueurs sans note.</p>
-  <p>Clique un joueur pour le titulariser/banc, choisis une formation, marque le capitaine (★) --
-  rien n'est envoyé à MPG automatiquement, c'est à toi de recopier cette compo toi-même.</p>
+  <p>Clique un joueur pour le faire progresser (hors groupe → banc → titulaire, puis retour au banc),
+  choisis une formation, marque le capitaine (★) -- rien n'est envoyé à MPG automatiquement, c'est à
+  toi de recopier cette compo toi-même.</p>
 </div>
 
 <div id="status" class="status-msg">Chargement...</div>
@@ -497,7 +498,13 @@
   // Banc reel (max 7 : 1 gardien + 6 joueurs de champ, cf. defaultBenchIds)
   // et "hors groupe" (le reste de l'effectif possede, non convoque cette
   // journee) -- deux sections distinctes plutot qu'un seul pool
-  // indifferencie (retour utilisateur 2026-08-29).
+  // indifferencie (retour utilisateur 2026-08-29). Progression a 3 crans
+  // par simple clic sur le corps de la chip -- hors groupe -> banc ->
+  // titulaire -> banc -- chaque zone a sa propre classe (bench-zone/
+  // outgroup-zone) pour brancher le bon comportement de clic cote
+  // renderState (correctif 2026-08-29 : cliquer un joueur "hors groupe"
+  // le titularisait directement en sautant le banc, "je n'arrive pas a y
+  // remettre des joueurs" -- le clic doit d'abord remettre au banc).
   function benchHtml(state) {
     const rows = PITCH_POSITION_ORDER.map(pos => {
       const players = state.squad
@@ -507,7 +514,7 @@
       const chips = players.map(p => chipHtml(p, false, false, "remove")).join("");
       return `<div class="pool-line"><span class="pool-line-label">${POSITION_LABEL[pos]}</span>${chips}</div>`;
     }).join("");
-    return rows || `<p class="meta" style="margin:0.4rem 0 0;">Aucun remplaçant désigné.</p>`;
+    return `<div class="bench-zone">${rows || `<p class="meta" style="margin:0.4rem 0 0;">Aucun remplaçant désigné.</p>`}</div>`;
   }
 
   function outOfGroupHtml(state) {
@@ -516,10 +523,10 @@
         .filter(p => p.position === pos && !state.starterIds.has(p.playerId) && !state.benchIds.has(p.playerId))
         .sort((a, b) => (b.projection ?? -1) - (a.projection ?? -1));
       if (!players.length) return "";
-      const chips = players.map(p => chipHtml(p, false, false, "add")).join("");
+      const chips = players.map(p => chipHtml(p, false, false)).join("");
       return `<div class="pool-line"><span class="pool-line-label">${POSITION_LABEL[pos]}</span>${chips}</div>`;
     }).join("");
-    return rows || `<p class="meta" style="margin:0.4rem 0 0;">Tout l'effectif possédé est sur le terrain ou au banc.</p>`;
+    return `<div class="outgroup-zone">${rows || `<p class="meta" style="margin:0.4rem 0 0;">Tout l'effectif possédé est sur le terrain ou au banc.</p>`}</div>`;
   }
 
   // Memes options/seuils que site/simulations.html (BONUS_OPTIONS/
@@ -694,9 +701,20 @@
         renderState(root, state);
       });
     });
-    bodyEl.querySelectorAll(".chip[data-player-id]").forEach(chip => {
+    // Progression a 3 crans par clic sur le corps de la chip -- terrain/banc
+    // (titulaire <-> banc, cf. toggleStarter) VS hors groupe (-> banc
+    // seulement, cf. toggleBench) -- correctif 2026-08-29, cf. commentaire
+    // au-dessus de benchHtml/outOfGroupHtml.
+    bodyEl.querySelectorAll(".pitch .chip[data-player-id], .bench-zone .chip[data-player-id]").forEach(chip => {
       chip.addEventListener("click", () => {
         toggleStarter(state, chip.dataset.playerId);
+        renderState(root, state);
+      });
+    });
+    bodyEl.querySelectorAll(".outgroup-zone .chip[data-player-id]").forEach(chip => {
+      chip.addEventListener("click", () => {
+        toggleBench(state, chip.dataset.playerId);
+        pruneDependentState(state);
         renderState(root, state);
       });
     });
