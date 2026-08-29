@@ -21,17 +21,23 @@ suppose) : stats.nearestMatches.matches[].status DEJA present dans les
 donnees qu'on recupere (aucun nouvel appel reseau requis) encode bien un
 signal exploitable. Verifie sur l'integralite d'un pool reel (471
 joueurs, Liga_Tapas) : status 1/2 = a joue (rating+goalsScored presents),
-3/4 = dans le groupe mais pas rentre (goalsScored seul, PAS blesse -- un
-simple choix tactique), 6 = ABSENT du groupe du match (ni rating ni
-goalsScored) -- correlation 100% propre sur les 5 valeurs observees, et
-confirme sur Ochoa (status=6 sur ses 2 derniers matchs, blessure
-confirmee par l'utilisateur). is_likely_unavailable() s'appuie sur ce
-signal pour ecarter ces joueurs des choix automatiques -- mais
-full_squad() les expose quand meme (avec le flag) pour rester
-selectionnables a la main, ce champ restant un signal RETROSPECTIF
-(dernier match joue), pas une confirmation temps reel pour le prochain
-match.
-"""
+3/4 = dans le groupe mais pas rentre (goalsScored seul), 6 = ABSENT du
+groupe du match (ni rating ni goalsScored) -- correlation 100% propre sur
+les 5 valeurs observees. is_likely_unavailable() s'appuie sur ce signal
+pour ecarter ces joueurs des choix automatiques -- full_squad() les
+expose quand meme (avec le flag) pour rester selectionnables a la main.
+
+IMPORTANT (correction utilisateur 2026-08-29, meme jour) : ce signal veut
+dire "n'a pas joue une seule minute lors de son dernier match", RIEN DE
+PLUS -- un joueur laisse de cote par son entraineur (rotation, tactique)
+matche aussi status=6, sans etre blesse. Seul Ochoa etait confirme
+blesse par l'utilisateur ; le signal reste utile a afficher (retenu tel
+quel, sur demande explicite : "on peut garder le drapeau rouge ... c'est
+une info interessante") mais NE DOIT PLUS etre presente comme une
+detection de blessure/suspension, cote code ou UI -- l'icone croix rouge
+reelle vue sur Ochoa vient d'une AUTRE source (probablement un flag
+editorial MPG specifique au prochain match, pas encore localisee dans
+les endpoints connus de ce fichier)."""
 
 # Formations MPG reelles, echantillonnees sur des divisions en direct
 # (aucune doc officielle, comme le reste de cette couche API reverse-
@@ -77,12 +83,14 @@ def last_played_match_status(pool_entry: dict) -> int | None:
 
 
 def is_likely_unavailable(pool_entry: dict) -> bool:
-    """True si le joueur n'etait meme pas dans le groupe convoque lors de
-    son dernier match (le plus souvent blessure/suspension -- cf.
-    docstring module, verifie sur un cas reel signale par l'utilisateur,
-    "Ochoa"). Signal retrospectif, pas une confirmation pour le PROCHAIN
-    match -- utilise pour ecarter ces joueurs des choix automatiques,
-    jamais pour les cacher (cf. full_squad)."""
+    """True si le joueur n'a joue AUCUNE minute lors de son dernier match
+    (pas meme entre en jeu) -- PAS une detection de blessure/suspension
+    (correction utilisateur 2026-08-29 : seul un cas reel etait
+    effectivement blessure confirmee, "Ochoa" -- un joueur laisse au repos
+    par choix tactique matche exactement pareil). Signal retrospectif,
+    pas une confirmation pour le PROCHAIN match -- utilise pour ecarter
+    ces joueurs des choix automatiques, jamais pour les cacher (cf.
+    full_squad), cf. docstring module."""
     return last_played_match_status(pool_entry) == UNAVAILABLE_MATCH_STATUS
 
 

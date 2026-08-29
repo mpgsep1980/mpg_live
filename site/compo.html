@@ -109,11 +109,11 @@
 <div class="disclaimer">
   <strong>À vérifier avant de soumettre</strong>
   <p>Recommandation basée sur la moyenne de points MPG de chaque joueur possédé, en excluant ceux
-  marqués <span class="unavailable-flag" style="cursor:default;">⚑</span> (absents du groupe lors
-  de leur dernier match -- souvent blessure/suspension). <strong>Ce signal n'est pas une
-  confirmation officielle pour le prochain match</strong> -- MPG n'expose pas de vrai statut
-  blessure/suspension, donc vérifie toujours dans la vraie appli avant de valider, surtout pour
-  les joueurs sans note.</p>
+  marqués <span class="unavailable-flag" style="cursor:default;">⚑</span> (n'ont pas joué une seule
+  minute lors de leur dernier match). <strong>Ce n'est pas une confirmation de blessure ou de
+  suspension</strong> -- juste un joueur laissé de côté par son entraîneur, pour une raison qui peut
+  être tout autre. MPG n'expose pas de vrai statut blessure/suspension officiel, donc vérifie
+  toujours dans la vraie appli avant de valider, surtout pour les joueurs sans note.</p>
   <p>Clique un joueur pour le titulariser/banc, choisis une formation, marque le capitaine (★) --
   rien n'est envoyé à MPG automatiquement, c'est à toi de recopier cette compo toi-même.</p>
 </div>
@@ -258,7 +258,7 @@
 
   function playerRowHtml(p, isStarter, isCaptain) {
     const flag = p.likelyUnavailable
-      ? `<span class="unavailable-flag" title="Absent du groupe lors de son dernier match (souvent blessure/suspension) -- vérifie avant de le titulariser.">⚑</span>`
+      ? `<span class="unavailable-flag" title="N'a joué aucune minute lors de son dernier match -- pas forcément blessé, vérifie avant de le titulariser.">⚑</span>`
       : "";
     return `
       <div class="player-row${isStarter ? " is-starter" : ""}" data-player-id="${p.playerId}">
