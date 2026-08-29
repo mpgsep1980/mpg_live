@@ -47,31 +47,46 @@
   .summary-formation { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--mpg-text-soft); }
   .expander-body { padding: 0 1.1rem 1.1rem; border-top: 0.5px solid var(--mpg-border-soft); }
 
-  .position-block { margin-top: 0.5rem; }
-  .position-label {
-    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em;
-    color: var(--mpg-text-soft); margin: 0.9rem 0 0.35rem;
-    border-top: 0.5px solid var(--mpg-border-soft); padding-top: 0.5rem;
+  /* --- Terrain (demi-terrain vert, une ligne par poste) + effectif --
+     retour utilisateur 2026-08-29, "meme pas l'esthetique avec le demi
+     terrain de football et les maillots des equipes ?" (vu dans le projet
+     soeur MPG_Perso_L1) -- meme esprit visuel (terrain vert, chips par
+     poste, maillot par-dessus), maillots hotlinkes directement depuis MPG
+     (jerseyUrl, cf. simulate_api/app.py) plutot qu'une copie locale. */
+  .pitch {
+    background: linear-gradient(180deg, #2f8f4e 0%, #2a7d46 100%);
+    border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius);
+    padding: 1.1rem 1.2rem; margin: 0.75rem 0; display: flex; flex-direction: column; gap: 0.7rem;
   }
-  .player-row {
-    display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0.4rem; margin: 0.1rem 0;
-    border-radius: var(--mpg-radius); cursor: pointer;
+  .pitch-line { display: flex; justify-content: center; gap: 0.6rem; flex-wrap: wrap; }
+
+  .pool-section { margin-top: 0.4rem; }
+  .pool-line { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin: 0.4rem 0; }
+  .pool-line-label {
+    font-size: 0.72rem; font-weight: 700; color: var(--mpg-text-soft); width: 1.2rem;
+    text-align: center; flex-shrink: 0;
   }
-  .player-row:hover { background: var(--mpg-warning-soft); }
-  .player-row.is-starter { background: color-mix(in srgb, var(--mpg-success) 10%, transparent); }
-  .player-name { font-size: 0.88rem; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .player-name.bench { color: var(--mpg-text-soft); }
-  .cap-btn {
-    flex: none; background: none; border: none; cursor: pointer; font-size: 0.95rem; line-height: 1;
-    color: var(--mpg-text-soft); padding: 0.1rem 0.2rem;
+
+  .chip {
+    display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
+    background: rgba(255,255,255,.96); border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius);
+    padding: 0.4rem 0.5rem; min-width: 5rem; max-width: 6.5rem; cursor: pointer; position: relative;
   }
-  .cap-btn.is-captain { color: #2b6fd1; }
-  .unavailable-flag { color: var(--mpg-danger); margin-right: 0.3rem; cursor: help; }
+  .chip.bench-chip { background: #fff; }
+  .chip.chip-empty { cursor: default; opacity: 0.75; }
+  .chip .chip-jersey { width: 1.7rem; height: 1.7rem; object-fit: contain; }
+  .chip .chip-name { font-size: 0.68rem; font-weight: 700; text-align: center; line-height: 1.2; word-break: break-word; color: var(--mpg-title); }
+  .chip .chip-cap {
+    position: absolute; top: 0.15rem; right: 0.3rem; font-size: 0.85rem; line-height: 1;
+    color: var(--mpg-text-soft); cursor: pointer;
+  }
+  .chip .chip-cap.is-captain { color: #2b6fd1; }
+  .chip .chip-flag { position: absolute; top: 0.15rem; left: 0.3rem; font-size: 0.7rem; color: var(--mpg-danger); cursor: help; }
 
   .note-badge {
-    flex: none; width: 1.7rem; height: 1.7rem; border-radius: 50%;
+    flex: none; width: 1.6rem; height: 1.6rem; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    font-size: 0.72rem; font-weight: 700; color: #fff;
+    font-size: 0.68rem; font-weight: 700; color: #fff;
     font-variant-numeric: tabular-nums; position: relative;
   }
   .note-badge.note-high { background: var(--mpg-success); }
@@ -109,7 +124,7 @@
 <div class="disclaimer">
   <strong>À vérifier avant de soumettre</strong>
   <p>Recommandation basée sur la moyenne de points MPG de chaque joueur possédé, en excluant ceux
-  marqués <span class="unavailable-flag" style="cursor:default;">⚑</span> (n'ont pas joué une seule
+  marqués <span style="color:var(--mpg-danger);">⚑</span> (n'ont pas joué une seule
   minute lors de leur dernier match). <strong>Ce n'est pas une confirmation de blessure ou de
   suspension</strong> -- juste un joueur laissé de côté par son entraîneur, pour une raison qui peut
   être tout autre. MPG n'expose pas de vrai statut blessure/suspension officiel, donc vérifie
@@ -256,36 +271,62 @@
     if (!state.starterIds.has(state.captainId)) state.captainId = pickCaptain(state);
   }
 
-  function playerRowHtml(p, isStarter, isCaptain) {
-    const flag = p.likelyUnavailable
-      ? `<span class="unavailable-flag" title="N'a joué aucune minute lors de son dernier match -- pas forcément blessé, vérifie avant de le titulariser.">⚑</span>`
+  // Attaquants en haut (cote but adverse) -> gardien en bas, comme la
+  // vraie appli MPG -- ordre inverse du prototype MPG_Perso_L1 (qui
+  // affichait G en premier), choisi pour rester familier aux managers.
+  const PITCH_POSITION_ORDER = [4, 3, 2, 1];
+
+  function chipHtml(p, isStarter, isCaptain) {
+    const capBtn = isStarter
+      ? `<span class="chip-cap${isCaptain ? " is-captain" : ""}" data-captain-for="${p.playerId}" title="Capitaine">${isCaptain ? "★" : "☆"}</span>`
       : "";
+    const flag = p.likelyUnavailable
+      ? `<span class="chip-flag" title="N'a joué aucune minute lors de son dernier match -- pas forcément blessé, vérifie avant de le titulariser.">⚑</span>`
+      : "";
+    const jersey = p.jerseyUrl ? `<img class="chip-jersey" src="${p.jerseyUrl}" alt="" onerror="this.remove()">` : "";
     return `
-      <div class="player-row${isStarter ? " is-starter" : ""}" data-player-id="${p.playerId}">
+      <div class="chip${isStarter ? "" : " bench-chip"}" data-player-id="${p.playerId}">
+        ${capBtn}${flag}${jersey}
+        <span class="chip-name">${p.name}</span>
         <div class="note-badge ${noteClass(p.projection)}">${fmt(p.projection)}</div>
-        <span class="player-name${isStarter ? "" : " bench"}">${flag}${p.name}</span>
-        ${isStarter ? `<button type="button" class="cap-btn${isCaptain ? " is-captain" : ""}" data-captain-for="${p.playerId}" title="Capitaine">${isCaptain ? "★" : "☆"}</button>` : ""}
       </div>`;
+  }
+
+  function emptySlotHtml(pos) {
+    return `<div class="chip chip-empty"><span class="chip-name">${POSITION_LABEL[pos]}</span><span class="chip-name" style="opacity:.6;">vide</span></div>`;
+  }
+
+  function pitchHtml(state) {
+    const counts = state.formations[state.formation] || {};
+    return PITCH_POSITION_ORDER.map(pos => {
+      const need = counts[pos] || 0;
+      if (!need) return "";
+      const starters = state.squad
+        .filter(p => p.position === pos && state.starterIds.has(p.playerId))
+        .sort((a, b) => (b.projection ?? -1) - (a.projection ?? -1));
+      const slots = [];
+      for (let i = 0; i < need; i++) {
+        slots.push(starters[i] ? chipHtml(starters[i], true, starters[i].playerId === state.captainId) : emptySlotHtml(pos));
+      }
+      return `<div class="pitch-line">${slots.join("")}</div>`;
+    }).join("");
+  }
+
+  function poolHtml(state) {
+    const rows = PITCH_POSITION_ORDER.map(pos => {
+      const players = state.squad
+        .filter(p => p.position === pos && !state.starterIds.has(p.playerId))
+        .sort((a, b) => (b.projection ?? -1) - (a.projection ?? -1));
+      if (!players.length) return "";
+      const chips = players.map(p => chipHtml(p, false, false)).join("");
+      return `<div class="pool-line"><span class="pool-line-label">${POSITION_LABEL[pos]}</span>${chips}</div>`;
+    }).join("");
+    return rows || `<p class="meta" style="margin:0.5rem 0 0;">Tout l'effectif possédé est sur le terrain.</p>`;
   }
 
   function stateHtml(state) {
     const formationOptions = Object.keys(state.formations).sort()
       .map(f => `<option value="${f}"${f === state.formation ? " selected" : ""}>${f}</option>`).join("");
-    const groups = { 1: [], 2: [], 3: [], 4: [] };
-    for (const p of state.squad) if (groups[p.position]) groups[p.position].push(p);
-    const blocks = [1, 2, 3, 4].map(pos => {
-      if (!groups[pos].length) return "";
-      const rows = groups[pos]
-        .slice()
-        .sort((a, b) => {
-          const aStart = state.starterIds.has(a.playerId), bStart = state.starterIds.has(b.playerId);
-          if (aStart !== bStart) return aStart ? -1 : 1;
-          return (b.projection ?? -1) - (a.projection ?? -1);
-        })
-        .map(p => playerRowHtml(p, state.starterIds.has(p.playerId), p.playerId === state.captainId))
-        .join("");
-      return `<div class="position-block"><div class="position-label">${POSITION_LABEL[pos]}</div>${rows}</div>`;
-    }).join("");
     const warning = state.recommended.formation
       ? ""
       : `<p class="status-msg err" style="margin:0.5rem 0 0;">Pas assez de joueurs fiables pour une recommandation automatique -- construis ta compo à la main ci-dessous.</p>`;
@@ -294,7 +335,9 @@
         <label>Formation <select class="formation-select">${formationOptions}</select></label>
         <button type="button" class="reset-btn">Réinitialiser</button>
       </div>
-      ${warning}${blocks}`;
+      ${warning}
+      <div class="pitch">${pitchHtml(state)}</div>
+      <div class="pool-section">${poolHtml(state)}</div>`;
   }
 
   function renderState(root, state) {
@@ -313,16 +356,16 @@
       state.captainId = state.recommended.captainId;
       renderState(root, state);
     });
-    bodyEl.querySelectorAll(".cap-btn").forEach(btn => {
+    bodyEl.querySelectorAll(".chip-cap").forEach(btn => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         state.captainId = btn.dataset.captainFor;
         renderState(root, state);
       });
     });
-    bodyEl.querySelectorAll(".player-row").forEach(row => {
-      row.addEventListener("click", () => {
-        toggleStarter(state, row.dataset.playerId);
+    bodyEl.querySelectorAll(".chip[data-player-id]").forEach(chip => {
+      chip.addEventListener("click", () => {
+        toggleStarter(state, chip.dataset.playerId);
         renderState(root, state);
       });
     });

@@ -70,6 +70,27 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://zvmngpoogwjiknqrkjky.supa
 SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "sb_publishable_YhAD0_spZJF58Dt_TTQplQ_VrFSKRK8")
 _supabase = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
+# Maillots reels MPG, hebergees publiquement par MPG lui-meme -- retour
+# utilisateur 2026-08-29, "meme pas l'esthetique avec le demi terrain de
+# football et les maillots" (vu dans un projet soeur, MPG_Perso_L1, qui
+# stocke sa PROPRE copie base64 des maillots) : inutile de dupliquer un
+# asset local ici, l'URL MPG est directement hotlinkable (verifie :
+# s3.eu-west-1.amazonaws.com/image.mpg/jersey/{saison}/{championshipId}/
+# {clubId numerique}.png repond 200 sans auth). La "saison" ici est
+# l'annee calendaire reelle (stats.nextMatch.season du pool, ex. 2026),
+# PAS le numero de saison interne a la division (ex. 22) utilise ailleurs
+# dans ce fichier -- deux systemes de numerotation distincts chez MPG.
+JERSEY_BASE_URL = "https://s3.eu-west-1.amazonaws.com/image.mpg/jersey"
+
+
+def jersey_url_for(pool_entry: dict, champ_id: int) -> str | None:
+    club_id = pool_entry.get("clubId") or ""
+    club_num = club_id.rsplit("_", 1)[-1] if club_id else None
+    season = ((pool_entry.get("stats") or {}).get("nextMatch") or {}).get("season")
+    if not club_num or not season:
+        return None
+    return f"{JERSEY_BASE_URL}/{season}/{champ_id}/{club_num}.png"
+
 
 @app.after_request
 def _add_cors_headers(response):
@@ -531,7 +552,8 @@ def recommend_lineup_route():
     def resolve(entry):
         p = pool.get(entry["playerId"], {})
         name = f"{p.get('firstName', '')} {p.get('lastName', '')}".strip()
-        return {**entry, "name": name}
+        jersey_url = jersey_url_for(p, champ_id)
+        return {**entry, "name": name, "jerseyUrl": jersey_url}
 
     rec = recommend_lineup(squad_ids, pool)
     squad = [resolve(p) for p in full_squad(squad_ids, pool)]
