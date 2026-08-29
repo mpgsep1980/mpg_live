@@ -66,6 +66,7 @@
     color: var(--mpg-text-soft); padding: 0.1rem 0.2rem;
   }
   .cap-btn.is-captain { color: #2b6fd1; }
+  .unavailable-flag { color: var(--mpg-danger); margin-right: 0.3rem; cursor: help; }
 
   .note-badge {
     flex: none; width: 1.7rem; height: 1.7rem; border-radius: 50%;
@@ -107,11 +108,12 @@
 <div class="meta">La composition recommandée pour chacune de tes ligues, à recopier toi-même dans l'appli MPG.</div>
 <div class="disclaimer">
   <strong>À vérifier avant de soumettre</strong>
-  <p>Recommandation basée sur la moyenne de points MPG de chaque joueur possédé -- elle ne tient
-  compte ni de l'adversaire à venir, ni des blessures/suspensions : <strong>ce statut n'existe pas
-  du tout dans les données MPG que l'app peut lire</strong>, donc un joueur blessé peut très bien
-  apparaître ici comme titulaire recommandé. Vérifie chaque joueur (surtout ceux sans note) dans
-  la vraie appli avant de valider.</p>
+  <p>Recommandation basée sur la moyenne de points MPG de chaque joueur possédé, en excluant ceux
+  marqués <span class="unavailable-flag" style="cursor:default;">⚑</span> (absents du groupe lors
+  de leur dernier match -- souvent blessure/suspension). <strong>Ce signal n'est pas une
+  confirmation officielle pour le prochain match</strong> -- MPG n'expose pas de vrai statut
+  blessure/suspension, donc vérifie toujours dans la vraie appli avant de valider, surtout pour
+  les joueurs sans note.</p>
   <p>Clique un joueur pour le titulariser/banc, choisis une formation, marque le capitaine (★) --
   rien n'est envoyé à MPG automatiquement, c'est à toi de recopier cette compo toi-même.</p>
 </div>
@@ -255,10 +257,13 @@
   }
 
   function playerRowHtml(p, isStarter, isCaptain) {
+    const flag = p.likelyUnavailable
+      ? `<span class="unavailable-flag" title="Absent du groupe lors de son dernier match (souvent blessure/suspension) -- vérifie avant de le titulariser.">⚑</span>`
+      : "";
     return `
       <div class="player-row${isStarter ? " is-starter" : ""}" data-player-id="${p.playerId}">
         <div class="note-badge ${noteClass(p.projection)}">${fmt(p.projection)}</div>
-        <span class="player-name${isStarter ? "" : " bench"}">${p.name}</span>
+        <span class="player-name${isStarter ? "" : " bench"}">${flag}${p.name}</span>
         ${isStarter ? `<button type="button" class="cap-btn${isCaptain ? " is-captain" : ""}" data-captain-for="${p.playerId}" title="Capitaine">${isCaptain ? "★" : "☆"}</button>` : ""}
       </div>`;
   }

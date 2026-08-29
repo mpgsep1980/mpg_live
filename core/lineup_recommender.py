@@ -15,13 +15,22 @@ heuristique -- pas necessaire pour une premiere version utile).
 
 V1.1 (retour utilisateur 2026-08-29, apres premier test reel) : le pool
 MPG (championship-players-pool) n'expose AUCUN champ blessure/suspension
-(verifie sur plusieurs joueurs, dont un signale en jeu par l'utilisateur,
-"Carlos Dotor") -- limite reelle de la donnee source, pas un bug ici,
-affichee explicitement cote UI. En consequence recommend_lineup() reste
-une PROPOSITION de depart, jamais une decision finale -- full_squad()
-expose l'integralite de l'effectif (y compris joueurs sans projection
-fiable) pour que le manager puisse corriger manuellement cote frontend
-avant de recopier dans MPG.
+EXPLICITE -- mais retour utilisateur suivant, avec le HTML du vrai site
+MPG a l'appui (icone croix rouge sur "Ochoa", pas "Dotor" comme d'abord
+suppose) : stats.nearestMatches.matches[].status DEJA present dans les
+donnees qu'on recupere (aucun nouvel appel reseau requis) encode bien un
+signal exploitable. Verifie sur l'integralite d'un pool reel (471
+joueurs, Liga_Tapas) : status 1/2 = a joue (rating+goalsScored presents),
+3/4 = dans le groupe mais pas rentre (goalsScored seul, PAS blesse -- un
+simple choix tactique), 6 = ABSENT du groupe du match (ni rating ni
+goalsScored) -- correlation 100% propre sur les 5 valeurs observees, et
+confirme sur Ochoa (status=6 sur ses 2 derniers matchs, blessure
+confirmee par l'utilisateur). is_likely_unavailable() s'appuie sur ce
+signal pour ecarter ces joueurs des choix automatiques -- mais
+full_squad() les expose quand meme (avec le flag) pour rester
+selectionnables a la main, ce champ restant un signal RETROSPECTIF
+(dernier match joue), pas une confirmation temps reel pour le prochain
+match.
 """
 
 # Formations MPG reelles, echantillonnees sur des divisions en direct
@@ -47,6 +56,34 @@ FORMATIONS: dict[str, dict[int, int]] = {
 # puisse plus etre completee, ex. effectif reel avec seulement 1 attaquant
 # "titulaire" utilisable sur tout un effectif).
 MIN_PLAYED_MATCHES = 1
+
+
+# status du dernier match dans stats.nearestMatches.matches signifiant
+# "absent du groupe" (ni note ni but marque, contrairement a 1/2 = a joue
+# et 3/4 = dans le groupe mais pas rentre) -- cf. docstring module.
+UNAVAILABLE_MATCH_STATUS = 6
+
+
+def last_played_match_status(pool_entry: dict) -> int | None:
+    """Status MPG du DERNIER match deja joue (pas le prochain, qui n'a pas
+    encore de `status`) -- None si aucun match joue n'est connu (nouveau
+    joueur)."""
+    matches = ((pool_entry.get("stats") or {}).get("nearestMatches") or {}).get("matches") or []
+    played = [m for m in matches if "status" in m]
+    if not played:
+        return None
+    played.sort(key=lambda m: m.get("gameWeekNumber", 0))
+    return played[-1]["status"]
+
+
+def is_likely_unavailable(pool_entry: dict) -> bool:
+    """True si le joueur n'etait meme pas dans le groupe convoque lors de
+    son dernier match (le plus souvent blessure/suspension -- cf.
+    docstring module, verifie sur un cas reel signale par l'utilisateur,
+    "Ochoa"). Signal retrospectif, pas une confirmation pour le PROCHAIN
+    match -- utilise pour ecarter ces joueurs des choix automatiques,
+    jamais pour les cacher (cf. full_squad)."""
+    return last_played_match_status(pool_entry) == UNAVAILABLE_MATCH_STATUS
 
 
 def player_projection(pool_entry: dict) -> float | None:
@@ -84,6 +121,7 @@ def full_squad(squad_ids: list[str], pool: dict[str, dict]) -> list[dict]:
             "playerId": pid,
             "position": entry.get("position"),
             "projection": round(projection, 2) if projection is not None else None,
+            "likelyUnavailable": is_likely_unavailable(entry),
         })
     return squad
 
@@ -95,9 +133,11 @@ def recommend_lineup(squad_ids: list[str], pool: dict[str, dict]) -> dict | None
     championnat reel de cette ligue.
 
     Pour chaque formation de FORMATIONS, tente de la remplir en choisissant,
-    poste par poste, les joueurs POSSEDES a la plus haute projection --
-    formation ecartee (pas d'erreur) si l'effectif ne peut pas la completer
-    (ex. un seul gardien blesse/jamais titularise). Retient la formation
+    poste par poste, les joueurs POSSEDES a la plus haute projection PARMI
+    CEUX PROBABLEMENT DISPONIBLES (is_likely_unavailable exclu -- jamais
+    recommande par defaut, mais reste choisissable a la main via
+    full_squad) -- formation ecartee (pas d'erreur) si l'effectif ne peut
+    pas la completer (ex. un seul gardien blesse/jamais titularise). Retient la formation
     dont la somme des projections titulaires est la plus haute parmi celles
     realisables. Renvoie {formation, starters: [{playerId, position,
     projection}], bench: [{playerId, position, projection}], captainId}
@@ -109,7 +149,7 @@ def recommend_lineup(squad_ids: list[str], pool: dict[str, dict]) -> dict | None
         if not entry:
             continue
         projection = player_projection(entry)
-        if projection is None:
+        if projection is None or is_likely_unavailable(entry):
             continue
         position = entry.get("position")
         if position in by_position:
@@ -157,7 +197,7 @@ def recommend_lineup(squad_ids: list[str], pool: dict[str, dict]) -> dict | None
         if pid in starter_ids or pid not in pool:
             continue
         projection = player_projection(pool[pid])
-        if projection is None:
+        if projection is None or is_likely_unavailable(pool[pid]):
             continue
         bench.append({"playerId": pid, "position": pool[pid]["position"], "projection": round(projection, 2)})
     bench.sort(key=lambda p: -p["projection"])
