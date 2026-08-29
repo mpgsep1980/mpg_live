@@ -103,6 +103,12 @@
   }
   .chip .chip-cap.is-captain { color: #2b6fd1; }
   .chip .chip-flag { position: absolute; top: 0.15rem; left: 0.3rem; font-size: 0.7rem; color: var(--mpg-danger); cursor: help; }
+  .chip .chip-bench-btn {
+    position: absolute; bottom: 0.15rem; right: 0.3rem; width: 1.05rem; height: 1.05rem;
+    border-radius: 50%; border: 0.5px solid var(--mpg-border-soft); background: var(--mpg-surface, #fff);
+    color: var(--mpg-text-soft); font-size: 0.7rem; line-height: 1; cursor: pointer; padding: 0;
+  }
+  .chip .chip-bench-btn:hover { color: var(--mpg-title); border-color: var(--mpg-text-soft); }
 
   .note-badge {
     flex: none; width: 1.6rem; height: 1.6rem; border-radius: 50%;
@@ -137,6 +143,8 @@
     display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; padding: 0.3rem 0; font-size: 0.85rem;
   }
   .tactical-sub-row .ts-name { font-weight: 700; min-width: 8rem; }
+  .tactical-sub-header { padding-bottom: 0; }
+  .tactical-sub-header .meta { font-weight: 700; text-transform: uppercase; font-size: 0.68rem; letter-spacing: 0.03em; }
 </style>
 </head>
 <body>
@@ -250,21 +258,45 @@
   // possibilite de modifier la formation et les joueurs"). squad = TOUS
   // les joueurs possedes (y compris sans note, cf. core/lineup_
   // recommender.py::full_squad) -- rien n'est jamais cache.
+  const BENCH_MAX_FIELD = 6;
+  const BENCH_MAX_GK = 1;
+  const TACTICAL_SUB_SLOTS = 5;
+
+  // Le banc reel MPG au coup d'envoi est plafonne a 7 (6 joueurs de champ +
+  // 1 gardien) -- retour utilisateur 2026-08-29, "il n'y a que 7
+  // remplaçants au coup d'envoi". Choisit par defaut les 7 meilleurs
+  // non-titulaires (par projection, dans la limite de la categorie) --
+  // le reste de l'effectif possede est simplement "hors groupe" cette
+  // journee, ni titulaire ni remplaçant.
+  function defaultBenchIds(squad, starterIds) {
+    const rest = squad.filter(p => !starterIds.has(p.playerId));
+    const byProjection = (a, b) => (b.projection ?? -1) - (a.projection ?? -1);
+    const gk = rest.filter(p => p.position === 1).sort(byProjection).slice(0, BENCH_MAX_GK);
+    const field = rest.filter(p => p.position !== 1).sort(byProjection).slice(0, BENCH_MAX_FIELD);
+    return new Set([...gk, ...field].map(p => p.playerId));
+  }
+
   function makeState(data, divisionSize) {
+    const starterIds = new Set((data.starters || []).map(p => p.playerId));
     return {
       squad: data.squad,
       formations: data.formations,
       divisionSize,
-      recommended: { formation: data.formation, starterIds: (data.starters || []).map(p => p.playerId), captainId: data.captainId },
+      usedBonuses: new Set(data.usedBonuses || []),
+      recommended: { formation: data.formation, starterIds: [...starterIds], captainId: data.captainId },
       formation: data.formation || Object.keys(data.formations)[0],
-      starterIds: new Set((data.starters || []).map(p => p.playerId)),
+      starterIds,
       captainId: data.captainId || null,
+      benchIds: defaultBenchIds(data.squad, starterIds),
       bonus: "",
       bonusTargetId: null,
-      // {starterId: {subId, threshold}} -- retour utilisateur 2026-08-29,
-      // "Les remplacements tactiques" -- max 5 (regle MPG officielle, cf.
-      // core/live_scoring.py docstring "jusqu'a 5"), jamais pour un gardien.
-      tacticalSubs: {},
+      // 5 emplacements FIXES (regle MPG officielle, cf. core/live_scoring.py
+      // docstring "jusqu'a 5") -- retour utilisateur 2026-08-29, "Il n'y a
+      // que 5 remplacements tactiques possibles ... on place une premiere
+      // ligne : Titulaire | remplacé par". Chaque emplacement optionnel
+      // (starterId: null = inactif), le remplaçant doit venir du banc reel
+      // (benchIds), jamais du reste de l'effectif.
+      tacticalSubSlots: Array.from({ length: TACTICAL_SUB_SLOTS }, () => ({ starterId: null, subId: null, threshold: 5 })),
     };
   }
 
@@ -274,25 +306,48 @@
     return !!p && p.position !== 1;
   }
 
+  // Bascule un non-titulaire entre "banc" (max 7, 1 gardien + 6 joueurs de
+  // champ) et "hors groupe" -- ejecte le moins bon du banc de la meme
+  // categorie si necessaire pour faire de la place (meme logique de swap
+  // que toggleStarter).
+  function toggleBench(state, playerId) {
+    const player = state.squad.find(p => p.playerId === playerId);
+    if (!player || state.starterIds.has(playerId)) return;
+    if (state.benchIds.has(playerId)) {
+      state.benchIds.delete(playerId);
+      return;
+    }
+    const isGK = player.position === 1;
+    const max = isGK ? BENCH_MAX_GK : BENCH_MAX_FIELD;
+    const sameCategory = [...state.benchIds]
+      .map(id => state.squad.find(p => p.playerId === id))
+      .filter(p => p && (p.position === 1) === isGK)
+      .sort((a, b) => (a.projection ?? -1) - (b.projection ?? -1));
+    if (sameCategory.length >= max) state.benchIds.delete(sameCategory[0].playerId);
+    state.benchIds.add(playerId);
+  }
+
   // Recale bonus/remplacements tactiques apres tout changement de
-  // titulaires/formation -- une cible McDo+ ou un remplacant designe qui
-  // ne correspond plus (plus titulaire, plus au banc, mauvais poste) est
-  // simplement efface plutot que laisse dans un etat incoherent.
+  // titulaires/formation/banc -- une cible McDo+ ou un emplacement de
+  // remplacement tactique qui ne correspond plus (plus titulaire, plus au
+  // banc, mauvais poste) est simplement efface plutot que laisse dans un
+  // etat incoherent.
   function pruneDependentState(state) {
     if (state.bonusTargetId && !isValidBonusTarget(state, state.bonusTargetId)) {
       state.bonusTargetId = null;
     }
-    for (const starterId of Object.keys(state.tacticalSubs)) {
-      const starter = state.squad.find(p => p.playerId === starterId);
-      if (!starter || !state.starterIds.has(starterId) || starter.position === 1) {
-        delete state.tacticalSubs[starterId];
+    for (const id of state.starterIds) state.benchIds.delete(id);
+    for (const slot of state.tacticalSubSlots) {
+      const starter = slot.starterId && state.squad.find(p => p.playerId === slot.starterId);
+      if (!starter || !state.starterIds.has(slot.starterId) || starter.position === 1) {
+        slot.starterId = null;
+        slot.subId = null;
         continue;
       }
-      const assign = state.tacticalSubs[starterId];
-      if (assign.subId) {
-        const sub = state.squad.find(p => p.playerId === assign.subId);
-        if (!sub || state.starterIds.has(assign.subId) || sub.position !== starter.position) {
-          assign.subId = null;
+      if (slot.subId) {
+        const sub = state.squad.find(p => p.playerId === slot.subId);
+        if (!sub || !state.benchIds.has(slot.subId) || sub.position !== starter.position) {
+          slot.subId = null;
         }
       }
     }
@@ -313,6 +368,15 @@
     if (!player) return;
     if (state.starterIds.has(playerId)) {
       state.starterIds.delete(playerId);
+      // Redescend automatiquement au banc si une place est libre dans sa
+      // categorie -- sinon reste simplement "hors groupe" (pas d'ejection
+      // en cascade, cf. toggleBench pour le mecanisme inverse explicite).
+      const isGK = player.position === 1;
+      const max = isGK ? BENCH_MAX_GK : BENCH_MAX_FIELD;
+      const sameCategory = [...state.benchIds]
+        .map(id => state.squad.find(p => p.playerId === id))
+        .filter(p => p && (p.position === 1) === isGK);
+      if (sameCategory.length < max) state.benchIds.add(playerId);
     } else {
       const need = (state.formations[state.formation] || {})[player.position] || 0;
       const atPos = [...state.starterIds]
@@ -321,6 +385,7 @@
         .sort((a, b) => (a.projection ?? -1) - (b.projection ?? -1));
       if (atPos.length >= need && atPos.length) state.starterIds.delete(atPos[0].playerId);
       state.starterIds.add(playerId);
+      state.benchIds.delete(playerId);
     }
     if (!state.starterIds.has(state.captainId)) state.captainId = pickCaptain(state);
     pruneDependentState(state);
@@ -329,13 +394,18 @@
   function applyFormation(state, formation) {
     state.formation = formation;
     const counts = state.formations[formation] || {};
+    const demoted = [];
     for (const pos of [1, 2, 3, 4]) {
       const need = counts[pos] || 0;
       let atPos = [...state.starterIds]
         .map(id => state.squad.find(p => p.playerId === id))
         .filter(p => p && p.position === pos)
         .sort((a, b) => (b.projection ?? -1) - (a.projection ?? -1));
-      while (atPos.length > need) state.starterIds.delete(atPos.pop().playerId);
+      while (atPos.length > need) {
+        const removed = atPos.pop();
+        state.starterIds.delete(removed.playerId);
+        demoted.push(removed);
+      }
       if (atPos.length < need) {
         const candidates = state.squad
           .filter(p => p.position === pos && !state.starterIds.has(p.playerId))
@@ -343,9 +413,21 @@
         for (const c of candidates) {
           if (atPos.length >= need) break;
           state.starterIds.add(c.playerId);
+          state.benchIds.delete(c.playerId);
           atPos.push(c);
         }
       }
+    }
+    // Les joueurs retires du XI par le changement de formation redescendent
+    // au banc s'il reste de la place dans leur categorie (meme logique que
+    // toggleStarter), sinon "hors groupe".
+    for (const player of demoted) {
+      const isGK = player.position === 1;
+      const max = isGK ? BENCH_MAX_GK : BENCH_MAX_FIELD;
+      const sameCategory = [...state.benchIds]
+        .map(id => state.squad.find(p => p.playerId === id))
+        .filter(p => p && (p.position === 1) === isGK);
+      if (sameCategory.length < max) state.benchIds.add(player.playerId);
     }
     if (!state.starterIds.has(state.captainId)) state.captainId = pickCaptain(state);
     pruneDependentState(state);
@@ -369,12 +451,18 @@
       onerror="if (this.dataset.fallback) { this.src = this.dataset.fallback; this.dataset.fallback = ''; } else { this.remove(); }">`;
   }
 
-  function chipHtml(p, isStarter, isCaptain) {
+  function chipHtml(p, isStarter, isCaptain, benchToggle) {
     const capBtn = isStarter
       ? `<span class="chip-cap${isCaptain ? " is-captain" : ""}" data-captain-for="${p.playerId}" title="Capitaine">${isCaptain ? "★" : "☆"}</span>`
       : "";
     const flag = p.likelyUnavailable
       ? `<span class="chip-flag" title="N'a joué aucune minute lors de son dernier match -- pas forcément blessé, vérifie avant de le titulariser.">⚑</span>`
+      : "";
+    // benchToggle: "add" (hors groupe -> banc), "remove" (banc -> hors
+    // groupe), ou absent (titulaire, pas de bouton banc) -- retour
+    // utilisateur 2026-08-29, "il n'y a que 7 remplaçants au coup d'envoi".
+    const benchBtn = benchToggle
+      ? `<button type="button" class="chip-bench-btn" data-bench-toggle="${p.playerId}" title="${benchToggle === "add" ? "Mettre sur le banc" : "Sortir du banc"}">${benchToggle === "add" ? "+" : "−"}</button>`
       : "";
     const jersey = jerseyImgHtml(p);
     return `
@@ -382,6 +470,7 @@
         ${capBtn}${flag}${jersey}
         <span class="chip-name">${p.name}</span>
         <div class="note-badge ${noteClass(p.projection)}">${fmt(p.projection)}</div>
+        ${benchBtn}
       </div>`;
   }
 
@@ -405,16 +494,32 @@
     }).join("");
   }
 
-  function poolHtml(state) {
+  // Banc reel (max 7 : 1 gardien + 6 joueurs de champ, cf. defaultBenchIds)
+  // et "hors groupe" (le reste de l'effectif possede, non convoque cette
+  // journee) -- deux sections distinctes plutot qu'un seul pool
+  // indifferencie (retour utilisateur 2026-08-29).
+  function benchHtml(state) {
     const rows = PITCH_POSITION_ORDER.map(pos => {
       const players = state.squad
-        .filter(p => p.position === pos && !state.starterIds.has(p.playerId))
+        .filter(p => p.position === pos && state.benchIds.has(p.playerId))
         .sort((a, b) => (b.projection ?? -1) - (a.projection ?? -1));
       if (!players.length) return "";
-      const chips = players.map(p => chipHtml(p, false, false)).join("");
+      const chips = players.map(p => chipHtml(p, false, false, "remove")).join("");
       return `<div class="pool-line"><span class="pool-line-label">${POSITION_LABEL[pos]}</span>${chips}</div>`;
     }).join("");
-    return rows || `<p class="meta" style="margin:0.5rem 0 0;">Tout l'effectif possédé est sur le terrain.</p>`;
+    return rows || `<p class="meta" style="margin:0.4rem 0 0;">Aucun remplaçant désigné.</p>`;
+  }
+
+  function outOfGroupHtml(state) {
+    const rows = PITCH_POSITION_ORDER.map(pos => {
+      const players = state.squad
+        .filter(p => p.position === pos && !state.starterIds.has(p.playerId) && !state.benchIds.has(p.playerId))
+        .sort((a, b) => (b.projection ?? -1) - (a.projection ?? -1));
+      if (!players.length) return "";
+      const chips = players.map(p => chipHtml(p, false, false, "add")).join("");
+      return `<div class="pool-line"><span class="pool-line-label">${POSITION_LABEL[pos]}</span>${chips}</div>`;
+    }).join("");
+    return rows || `<p class="meta" style="margin:0.4rem 0 0;">Tout l'effectif possédé est sur le terrain ou au banc.</p>`;
   }
 
   // Memes options/seuils que site/simulations.html (BONUS_OPTIONS/
@@ -439,12 +544,19 @@
   };
   const BONUS_NEEDS_TARGET = new Set(["boostOnePlayer"]);
 
-  function bonusOptionsForDivisionSize(divisionSize) {
-    return BONUS_OPTIONS.filter(o => !o.value || (divisionSize || 0) >= (BONUS_MIN_DIVISION_SIZE[o.value] || 0));
+  // Chaque coup n'est utilisable qu'UNE fois par saison -- retour
+  // utilisateur 2026-08-29, "les resumes des matchs gardent en memoire les
+  // bonus utilises, ne proposer un bonus que s'il reste encore disponible"
+  // (usedBonuses vient de core.api.get_used_bonuses, cf. simulate_api/app.py).
+  function bonusOptionsFor(state) {
+    return BONUS_OPTIONS.filter(o =>
+      !o.value ||
+      ((state.divisionSize || 0) >= (BONUS_MIN_DIVISION_SIZE[o.value] || 0) && !state.usedBonuses.has(o.value))
+    );
   }
 
   function bonusSectionHtml(state) {
-    const options = bonusOptionsForDivisionSize(state.divisionSize);
+    const options = bonusOptionsFor(state);
     const optionsHtml = options.map(o => `<option value="${o.value}"${o.value === state.bonus ? " selected" : ""}>${o.label}</option>`).join("");
     let targetHtml = "";
     if (BONUS_NEEDS_TARGET.has(state.bonus)) {
@@ -462,43 +574,58 @@
       </div>`;
   }
 
-  const TACTICAL_SUB_MAX = 5;
   const RATING_THRESHOLDS = Array.from({ length: 21 }, (_, i) => i / 2);
 
-  function tacticalSubRowHtml(state, starter) {
-    const assign = state.tacticalSubs[starter.playerId] || { subId: null, threshold: 5 };
-    const usedSubs = new Set(Object.values(state.tacticalSubs).map(a => a.subId).filter(Boolean));
-    const eligibleSubs = state.squad.filter(p =>
-      p.position === starter.position && !state.starterIds.has(p.playerId) &&
-      (!usedSubs.has(p.playerId) || p.playerId === assign.subId)
-    );
-    const usedCount = Object.values(state.tacticalSubs).filter(a => a.subId).length;
-    const capReached = usedCount >= TACTICAL_SUB_MAX && !assign.subId;
-    const subOptions = ['<option value="">Aucun</option>'].concat(
-      eligibleSubs.map(p => `<option value="${p.playerId}"${p.playerId === assign.subId ? " selected" : ""}>${p.name}</option>`)
+  // 5 emplacements fixes, chacun optionnel -- retour utilisateur
+  // 2026-08-29, "Il n'y a que 5 remplacements tactiques possibles pour les
+  // joueurs de champ (pas obligatoires) donc on place une premiere ligne :
+  // Titulaire | remplacé par ... et on garde si note <5 (de base)". Le
+  // remplaçant ne peut venir que du VRAI banc (state.benchIds, max 7),
+  // jamais du reste de l'effectif.
+  function tacticalSlotRowHtml(state, slot, index) {
+    const chosenStarterIds = new Set(state.tacticalSubSlots.map(s => s.starterId).filter(Boolean));
+    const starterCandidates = [...state.starterIds]
+      .map(id => state.squad.find(p => p.playerId === id))
+      .filter(p => p && p.position !== 1 && (!chosenStarterIds.has(p.playerId) || p.playerId === slot.starterId))
+      .sort((a, b) => a.position - b.position);
+    const starterOptions = ['<option value="">—</option>'].concat(
+      starterCandidates.map(p => `<option value="${p.playerId}"${p.playerId === slot.starterId ? " selected" : ""}>${p.name}</option>`)
     ).join("");
-    const thresholdOptions = RATING_THRESHOLDS.map(v => `<option value="${v}"${v === assign.threshold ? " selected" : ""}>${fmt(v)}</option>`).join("");
+
+    const starter = slot.starterId && state.squad.find(p => p.playerId === slot.starterId);
+    const subCandidates = starter
+      ? state.squad.filter(p => p.position === starter.position && state.benchIds.has(p.playerId))
+      : [];
+    const subOptions = ['<option value="">—</option>'].concat(
+      subCandidates.map(p => `<option value="${p.playerId}"${p.playerId === slot.subId ? " selected" : ""}>${p.name}</option>`)
+    ).join("");
+    const thresholdOptions = RATING_THRESHOLDS.map(v => `<option value="${v}"${v === slot.threshold ? " selected" : ""}>${fmt(v)}</option>`).join("");
+
     return `
       <div class="tactical-sub-row">
-        <span class="ts-name">${starter.name}</span>
-        <select class="ts-sub-select" data-starter-id="${starter.playerId}"${capReached ? ' disabled title="Maximum 5 remplacements tactiques atteint"' : ""}>${subOptions}</select>
+        <select class="ts-starter-select" data-slot="${index}">${starterOptions}</select>
+        <span class="meta">remplacé par</span>
+        <select class="ts-sub-select" data-slot="${index}"${starter ? "" : " disabled"}>${subOptions}</select>
         <span class="meta">si note &lt;</span>
-        <select class="ts-threshold-select" data-starter-id="${starter.playerId}"${assign.subId ? "" : " disabled"}>${thresholdOptions}</select>
+        <select class="ts-threshold-select" data-slot="${index}"${slot.subId ? "" : " disabled"}>${thresholdOptions}</select>
       </div>`;
   }
 
   function tacticalSubsSectionHtml(state) {
-    const fieldStarters = [...state.starterIds]
-      .map(id => state.squad.find(p => p.playerId === id))
-      .filter(p => p && p.position !== 1)
-      .sort((a, b) => a.position - b.position);
-    if (!fieldStarters.length) return "";
-    const used = Object.values(state.tacticalSubs).filter(a => a.subId).length;
-    const rows = fieldStarters.map(p => tacticalSubRowHtml(state, p)).join("");
+    const hasFieldStarters = [...state.starterIds].some(id => {
+      const p = state.squad.find(s => s.playerId === id);
+      return p && p.position !== 1;
+    });
+    if (!hasFieldStarters) return "";
+    const used = state.tacticalSubSlots.filter(s => s.subId).length;
+    const rows = state.tacticalSubSlots.map((slot, i) => tacticalSlotRowHtml(state, slot, i)).join("");
     return `
-      <div class="section-title">Remplacements tactiques (optionnel, ${used}/${TACTICAL_SUB_MAX})</div>
+      <div class="section-title">Remplacements tactiques (optionnel, ${used}/${TACTICAL_SUB_SLOTS})</div>
       <p class="meta" style="margin:0 0 0.4rem;">Si la note finale du titulaire est en-dessous du seuil (ou s'il n'a pas joué),
-      le remplaçant désigné entre à sa place avec sa propre note -- seulement s'il a lui-même joué.</p>
+      le remplaçant désigné (obligatoirement au banc) entre à sa place avec sa propre note -- seulement s'il a lui-même joué.</p>
+      <div class="tactical-sub-row tactical-sub-header">
+        <span class="meta">Titulaire</span><span class="meta">Remplacé par</span><span class="meta"></span>
+      </div>
       ${rows}`;
   }
 
@@ -523,7 +650,10 @@
         </div>
         ${pitchHtml(state)}
       </div>
-      <div class="pool-section">${poolHtml(state)}</div>
+      <div class="section-title">Banc (${state.benchIds.size}/${BENCH_MAX_GK + BENCH_MAX_FIELD})</div>
+      <div class="pool-section">${benchHtml(state)}</div>
+      <div class="section-title">Hors groupe</div>
+      <div class="pool-section">${outOfGroupHtml(state)}</div>
       ${bonusSectionHtml(state)}
       ${tacticalSubsSectionHtml(state)}`;
   }
@@ -541,16 +671,25 @@
     bodyEl.querySelector(".reset-btn").addEventListener("click", () => {
       state.formation = state.recommended.formation || Object.keys(state.formations)[0];
       state.starterIds = new Set(state.recommended.starterIds);
+      state.benchIds = defaultBenchIds(state.squad, state.starterIds);
       state.captainId = state.recommended.captainId;
       state.bonus = "";
       state.bonusTargetId = null;
-      state.tacticalSubs = {};
+      state.tacticalSubSlots = Array.from({ length: TACTICAL_SUB_SLOTS }, () => ({ starterId: null, subId: null, threshold: 5 }));
       renderState(root, state);
     });
     bodyEl.querySelectorAll(".chip-cap").forEach(btn => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         state.captainId = btn.dataset.captainFor;
+        pruneDependentState(state);
+        renderState(root, state);
+      });
+    });
+    bodyEl.querySelectorAll(".chip-bench-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        toggleBench(state, btn.dataset.benchToggle);
         pruneDependentState(state);
         renderState(root, state);
       });
@@ -576,21 +715,24 @@
         state.bonusTargetId = e.target.value || null;
       });
     }
+    bodyEl.querySelectorAll(".ts-starter-select").forEach(sel => {
+      sel.addEventListener("change", () => {
+        const slot = state.tacticalSubSlots[Number(sel.dataset.slot)];
+        slot.starterId = sel.value || null;
+        slot.subId = null;
+        renderState(root, state);
+      });
+    });
     bodyEl.querySelectorAll(".ts-sub-select").forEach(sel => {
       sel.addEventListener("change", () => {
-        const starterId = sel.dataset.starterId;
-        if (sel.value) {
-          state.tacticalSubs[starterId] = { subId: sel.value, threshold: (state.tacticalSubs[starterId] || {}).threshold ?? 5 };
-        } else {
-          delete state.tacticalSubs[starterId];
-        }
+        const slot = state.tacticalSubSlots[Number(sel.dataset.slot)];
+        slot.subId = sel.value || null;
         renderState(root, state);
       });
     });
     bodyEl.querySelectorAll(".ts-threshold-select").forEach(sel => {
       sel.addEventListener("change", () => {
-        const assign = state.tacticalSubs[sel.dataset.starterId];
-        if (assign) assign.threshold = parseFloat(sel.value);
+        state.tacticalSubSlots[Number(sel.dataset.slot)].threshold = parseFloat(sel.value);
       });
     });
   }

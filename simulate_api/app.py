@@ -43,7 +43,7 @@ from supabase import create_client
 from core.api import (
     get_division_matches, get_championship_match, get_division_info,
     get_live_total_divisions, get_division_team_names,
-    get_division_teams, get_championship_ids, get_player_pool,
+    get_division_teams, get_championship_ids, get_player_pool, get_used_bonuses,
 )
 from core.live_scoring import (
     compute_division_live_scores, collect_real_match_ids, VALID_BONUSES, bonus_available_for_division_size,
@@ -534,7 +534,12 @@ def recommend_lineup_route():
     a corriger manuellement, jamais une decision finale). `formation`/
     `starters`/`bench`/`captainId` restent `null`/`[]` (pas 409) si aucune
     formation n'est automatiquement realisable -- le manager peut quand
-    meme construire sa compo a la main a partir de `squad`."""
+    meme construire sa compo a la main a partir de `squad`. `usedBonuses`
+    (retour utilisateur 2026-08-29, "ne proposer un bonus a utiliser que
+    s'il reste encore disponible") : coups deja lances par ce manager sur
+    les journees deja jouees cette saison (cf. core.api.get_used_bonuses),
+    `[]` si indisponible plutot que de faire echouer toute la
+    recommandation."""
     if request.method == "OPTIONS":
         return "", 204
 
@@ -572,6 +577,16 @@ def recommend_lineup_route():
     rec = recommend_lineup(squad_ids, pool)
     squad = [resolve(p) for p in full_squad(squad_ids, pool)]
 
+    try:
+        used_bonuses = sorted(get_used_bonuses(short_id, season, division, user_id))
+    except Exception:
+        # Non bloquant -- retour utilisateur 2026-08-29 : ce n'est qu'un
+        # affinage du picker de bonus, pas indispensable au reste de la
+        # recommandation (ex. ligue jamais suivie par get_division_calendar,
+        # timeout MPG). Le picker retombe simplement sur "tout ce qui est
+        # deverrouille par la taille de division", comme avant ce correctif.
+        used_bonuses = []
+
     return jsonify({
         "formation": rec["formation"] if rec else None,
         "starters": [resolve(s) for s in rec["starters"]] if rec else [],
@@ -579,6 +594,7 @@ def recommend_lineup_route():
         "captainId": rec["captainId"] if rec else None,
         "squad": squad,
         "formations": FORMATIONS,
+        "usedBonuses": used_bonuses,
     })
 
 
