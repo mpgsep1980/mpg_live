@@ -277,13 +277,19 @@
     return new Set([...gk, ...field].map(p => p.playerId));
   }
 
-  function makeState(data, divisionSize) {
+  function makeState(data) {
     const starterIds = new Set((data.starters || []).map(p => p.playerId));
     return {
       squad: data.squad,
       formations: data.formations,
-      divisionSize,
-      usedBonuses: new Set(data.usedBonuses || []),
+      // {bonus: utilisations restantes cette saison} -- calcule cote
+      // serveur (tableau officiel MPG des quantites par taille de poule +
+      // decompte reel des coups deja lances, cf. core.live_scoring.
+      // bonus_remaining_counts/core.api.get_used_bonus_counts). Correctif
+      // 2026-08-29 : un premier jet supposait a tort "1 usage = epuise
+      // pour toujours", faux pour McDo+ (2 en poule de 6) -- "on en a 2 de
+      // base dans une ligue de 6".
+      bonusRemaining: data.bonusRemaining || {},
       recommended: { formation: data.formation, starterIds: [...starterIds], captainId: data.captainId },
       formation: data.formation || Object.keys(data.formations)[0],
       starterIds,
@@ -529,11 +535,12 @@
     return `<div class="outgroup-zone">${rows || `<p class="meta" style="margin:0.4rem 0 0;">Tout l'effectif possédé est sur le terrain ou au banc.</p>`}</div>`;
   }
 
-  // Memes options/seuils que site/simulations.html (BONUS_OPTIONS/
-  // BONUS_MIN_DIVISION_SIZE) -- pas de module JS partage sur ce site,
-  // duplique volontairement pour rester coherent avec le reste de l'app.
-  // Retour utilisateur 2026-08-29, "Les bonus (en fonction du type de
-  // poules (2-4-6-8 ou 10)".
+  // Memes labels que site/simulations.html (BONUS_OPTIONS) -- pas de
+  // module JS partage sur ce site, duplique volontairement pour rester
+  // coherent avec le reste de l'app. Le nombre restant (deverrouillage par
+  // taille de poule ET quota deja consomme, tableau officiel MPG) est
+  // calcule cote serveur (state.bonusRemaining, cf. makeState) -- pas
+  // duplique ici, cf. correctif 2026-08-29 sur la quantite McDo+.
   const BONUS_OPTIONS = [
     { value: "", label: "Aucun" },
     { value: "boostAllPlayers", label: "Zahia (+0,5 à tous)" },
@@ -544,27 +551,19 @@
     { value: "removeGoal", label: "Valise à Nanard (annule 1 but adv.)" },
     { value: "mirror", label: "Miroir (renvoie/vole le coup adv.)" },
   ];
-  const BONUS_MIN_DIVISION_SIZE = {
-    removeGoal: 4, boostOnePlayer: 4,
-    nerfGoalkeeper: 6, boostAllPlayers: 6, mirror: 6,
-    nerfAllPlayers: 8, blockTacticalSubs: 8,
-  };
   const BONUS_NEEDS_TARGET = new Set(["boostOnePlayer"]);
 
-  // Chaque coup n'est utilisable qu'UNE fois par saison -- retour
-  // utilisateur 2026-08-29, "les resumes des matchs gardent en memoire les
-  // bonus utilises, ne proposer un bonus que s'il reste encore disponible"
-  // (usedBonuses vient de core.api.get_used_bonuses, cf. simulate_api/app.py).
   function bonusOptionsFor(state) {
-    return BONUS_OPTIONS.filter(o =>
-      !o.value ||
-      ((state.divisionSize || 0) >= (BONUS_MIN_DIVISION_SIZE[o.value] || 0) && !state.usedBonuses.has(o.value))
-    );
+    return BONUS_OPTIONS.filter(o => !o.value || (state.bonusRemaining[o.value] || 0) > 0);
   }
 
   function bonusSectionHtml(state) {
     const options = bonusOptionsFor(state);
-    const optionsHtml = options.map(o => `<option value="${o.value}"${o.value === state.bonus ? " selected" : ""}>${o.label}</option>`).join("");
+    const optionsHtml = options.map(o => {
+      const remaining = state.bonusRemaining[o.value];
+      const suffix = o.value && remaining ? ` -- ${remaining} restant${remaining > 1 ? "s" : ""}` : "";
+      return `<option value="${o.value}"${o.value === state.bonus ? " selected" : ""}>${o.label}${suffix}</option>`;
+    }).join("");
     let targetHtml = "";
     if (BONUS_NEEDS_TARGET.has(state.bonus)) {
       const candidates = [...state.starterIds]
@@ -767,7 +766,7 @@
       const res = await fetch(url);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || res.statusText);
-      renderState(root, makeState(data, ctx.divisionSize));
+      renderState(root, makeState(data));
     } catch (e) {
       formationEl.textContent = "indisponible";
       bodyEl.innerHTML = `<p class="status-msg err">Recommandation indisponible (${e.message}).</p>`;
@@ -839,10 +838,7 @@
     const blocks = listEl.querySelectorAll(".compo-expander");
     myRows.forEach((row, i) => {
       const league = leaguesByCode[row.league_code];
-      const ctx = {
-        leagueCode: row.league_code, season: league.season_search, division: row.division, userId,
-        divisionSize: (row.data || []).length,
-      };
+      const ctx = { leagueCode: row.league_code, season: league.season_search, division: row.division, userId };
       loadRecommendation(blocks[i], ctx);
     });
   }

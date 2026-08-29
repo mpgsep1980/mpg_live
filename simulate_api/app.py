@@ -43,10 +43,11 @@ from supabase import create_client
 from core.api import (
     get_division_matches, get_championship_match, get_division_info,
     get_live_total_divisions, get_division_team_names,
-    get_division_teams, get_championship_ids, get_player_pool, get_used_bonuses,
+    get_division_teams, get_championship_ids, get_player_pool, get_used_bonus_counts,
 )
 from core.live_scoring import (
     compute_division_live_scores, collect_real_match_ids, VALID_BONUSES, bonus_available_for_division_size,
+    bonus_remaining_counts,
 )
 from core.league import league_from_supabase_row
 from core.live_projection import (
@@ -534,12 +535,16 @@ def recommend_lineup_route():
     a corriger manuellement, jamais une decision finale). `formation`/
     `starters`/`bench`/`captainId` restent `null`/`[]` (pas 409) si aucune
     formation n'est automatiquement realisable -- le manager peut quand
-    meme construire sa compo a la main a partir de `squad`. `usedBonuses`
+    meme construire sa compo a la main a partir de `squad`. `bonusRemaining`
     (retour utilisateur 2026-08-29, "ne proposer un bonus a utiliser que
-    s'il reste encore disponible") : coups deja lances par ce manager sur
-    les journees deja jouees cette saison (cf. core.api.get_used_bonuses),
-    `[]` si indisponible plutot que de faire echouer toute la
-    recommandation."""
+    s'il reste encore disponible" -- puis correction le meme jour, "on en a
+    2 de base dans une ligue de 6" pour McDo+, PAS 1) : {bonus: nombre
+    d'utilisations encore disponibles cette saison}, cf. core.live_scoring.
+    bonus_remaining_counts (tableau officiel MPG des quantites par taille
+    de poule) et core.api.get_used_bonus_counts (occurrences deja lancees,
+    scanne les journees deja jouees) -- retombe sur les quantites pleines
+    (jamais decrementees) plutot que de faire echouer toute la
+    recommandation si ce calcul echoue."""
     if request.method == "OPTIONS":
         return "", 204
 
@@ -578,14 +583,16 @@ def recommend_lineup_route():
     squad = [resolve(p) for p in full_squad(squad_ids, pool)]
 
     try:
-        used_bonuses = sorted(get_used_bonuses(short_id, season, division, user_id))
+        used_counts = get_used_bonus_counts(short_id, season, division, user_id)
+        bonus_remaining = bonus_remaining_counts(len(teams), used_counts)
     except Exception:
         # Non bloquant -- retour utilisateur 2026-08-29 : ce n'est qu'un
         # affinage du picker de bonus, pas indispensable au reste de la
         # recommandation (ex. ligue jamais suivie par get_division_calendar,
-        # timeout MPG). Le picker retombe simplement sur "tout ce qui est
-        # deverrouille par la taille de division", comme avant ce correctif.
-        used_bonuses = []
+        # timeout MPG). Le picker retombe sur "tout deverrouille" (quantite
+        # pleine, non decrementee) plutot que de faire echouer toute la
+        # recommandation.
+        bonus_remaining = bonus_remaining_counts(len(teams), {})
 
     return jsonify({
         "formation": rec["formation"] if rec else None,
@@ -594,7 +601,7 @@ def recommend_lineup_route():
         "captainId": rec["captainId"] if rec else None,
         "squad": squad,
         "formations": FORMATIONS,
-        "usedBonuses": used_bonuses,
+        "bonusRemaining": bonus_remaining,
     })
 
 

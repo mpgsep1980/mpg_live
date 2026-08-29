@@ -865,35 +865,59 @@ VALID_BONUSES = {
     "mirror",             # Miroir
 }
 
-# Taille de division MINIMALE a partir de laquelle chaque bonus existe (tableau
-# officiel MPG "Nombre de bonus par ligue", retour utilisateur 2026-08-11 --
-# colonnes 2/4/6/8/10, "-" = pas encore alloue). Pas de suivi du nombre DEJA
-# utilise (aucun stockage d'usage, cf. docstring module "Coups") -- seulement
-# la DISPONIBILITE du type pour cette taille, comparee via >= (couvre les
-# tailles intermediaires/superieures non listees telles quelles, ex. 7 ou 12).
-BONUS_MIN_DIVISION_SIZE = {
-    "removeGoal": 4,          # Valise a Nanard
-    "boostOnePlayer": 4,      # McDo+
-    "nerfGoalkeeper": 6,      # Suarez
-    "boostAllPlayers": 6,     # Zahia
-    "mirror": 6,              # Miroir
-    "fourStrikers": 6,        # 424 -- retour utilisateur 2026-08-18 (audit
-                               # collaborateur, B6) : MPG en a 8, cette table
-                               # en oubliait un. Disponibilite seulement --
-                               # PAS dans VALID_BONUSES, deja gere ailleurs
-                               # (core/scoring.py::BONUS_LABELS,
-                               # core/bonus_impact.py) sans effet de note
-                               # simule ici (aucune preuve qu'il en ait un,
-                               # contrairement aux 7 "coups" ci-dessus --
-                               # a confirmer avant de l'ajouter a
-                               # apply_own_bonus_effect/VALID_BONUSES).
-    "nerfAllPlayers": 8,      # Cheat Code 18-26
-    "blockTacticalSubs": 8,   # Tonton Pat'
+# Table officielle MPG "Nombre de bonus par ligue" -- {bonus: {taille de
+# poule/division: quantite allouee POUR TOUTE LA SAISON}}, colonnes 2/4/6/8/
+# 10 (taille absente = "-" = pas encore alloue a cette taille). Fournie par
+# l'utilisateur 2026-08-29 (capture d'ecran du tableau officiel), corrige un
+# premier correctif errone qui supposait "1 usage par saison, point final"
+# pour les 7 coups -- FAUX pour McDo+ notamment (2 en poule de 6, pas 1,
+# constate en vrai jeu -- "il est vrai que j'en ai utilise 1 mais on en a 2
+# de base dans une ligue de 6"). "fourStrikers" (424) inclus pour
+# completude du tableau officiel mais reste HORS VALID_BONUSES (pas de
+# preuve d'effet sur la note, cf. commentaire historique ci-dessous
+# toujours valable) -- jamais propose dans le picker de bonus de l'onglet
+# Compo. Taille intermediaire/superieure non listee telle quelle (ex. 7,
+# 12) : cf. bonus_quantity_for_division_size (retient le palier <= size le
+# plus haut).
+BONUS_QUANTITY_BY_DIVISION_SIZE: dict[str, dict[int, int]] = {
+    "removeGoal": {4: 1, 6: 1, 8: 1, 10: 1},          # Valise a Nanard
+    "boostOnePlayer": {4: 1, 6: 2, 8: 3, 10: 3},      # McDo+
+    "nerfGoalkeeper": {6: 1, 8: 1, 10: 2},            # Suarez
+    "boostAllPlayers": {6: 1, 8: 1, 10: 1},           # Zahia
+    "mirror": {6: 1, 8: 1, 10: 1},                    # Miroir
+    "fourStrikers": {6: 1, 8: 1, 10: 1},              # 424 -- hors VALID_BONUSES, cf. docstring
+    "nerfAllPlayers": {8: 1, 10: 1},                  # Cheat Code 18-26
+    "blockTacticalSubs": {8: 1, 10: 1},               # Tonton Pat'
 }
+
+# Derive de BONUS_QUANTITY_BY_DIVISION_SIZE (meme palier minimal, cf.
+# ci-dessus) -- conserve pour la compatibilite des appelants existants
+# (simulate-bonus/simulate-classement/live-scenario-sweep) qui n'ont besoin
+# que d'un oui/non, pas de la quantite.
+BONUS_MIN_DIVISION_SIZE = {bonus: min(tiers) for bonus, tiers in BONUS_QUANTITY_BY_DIVISION_SIZE.items()}
+
+
+def bonus_quantity_for_division_size(bonus: str, division_size: int) -> int:
+    """Nombre d'utilisations de `bonus` allouees POUR LA SAISON a une poule/
+    division de `division_size` equipes -- 0 si ce bonus n'existe pas
+    encore a cette taille."""
+    tiers = BONUS_QUANTITY_BY_DIVISION_SIZE.get(bonus, {})
+    applicable = [size for size in tiers if division_size >= size]
+    return tiers[max(applicable)] if applicable else 0
 
 
 def bonus_available_for_division_size(bonus: str, division_size: int) -> bool:
     return division_size >= BONUS_MIN_DIVISION_SIZE.get(bonus, 0)
+
+
+def bonus_remaining_counts(division_size: int, used_counts: dict[str, int]) -> dict[str, int]:
+    """{bonus: utilisations restantes cette saison} pour les 7 VALID_BONUSES
+    (jamais "fourStrikers", hors picker) -- retour utilisateur 2026-08-29,
+    "ne proposer un bonus a utiliser que s'il reste encore disponible"."""
+    return {
+        bonus: max(0, bonus_quantity_for_division_size(bonus, division_size) - used_counts.get(bonus, 0))
+        for bonus in VALID_BONUSES
+    }
 
 # Categorie d'un coup pour le Miroir (cf. docstring module) -- "self" =
 # beneficie a son propre lanceur (VOLE par le Miroir adverse), "opponent" =

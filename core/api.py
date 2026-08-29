@@ -241,29 +241,36 @@ def get_division_calendar(short_id: str, season_number: int, division_number: in
     return r.json()
 
 
-def get_used_bonuses(short_id: str, season_number: int, division_number: int, user_id: str, token: str = None) -> set[str]:
-    """Bonus ("coups") deja utilises par CE manager sur les journees deja
-    jouees de la saison -- retour utilisateur 2026-08-29, "les resumes des
-    matchs gardent en memoire les bonus utilises, ne proposer un bonus a
-    utiliser que s'il reste encore disponible" (chaque coup n'est
-    utilisable qu'UNE fois par saison). Aucun stockage Supabase dedie a
-    cet usage -- core.archive_capture ne suit que les bonus SUBIS
-    (direction inverse, pour la Pinata), pas les bonus LANCES par le
-    manager lui-meme -- reconstruit ici en scannant match[cote]["bonuses"]
-    (cf. get_division_matches) de chaque journee deja resolue (calendar
-    fixture avec afterTargetMan, cf. get_division_calendar -- absent tant
-    que le vrai resultat n'est pas confirme par MPG)."""
+def get_used_bonus_counts(short_id: str, season_number: int, division_number: int, user_id: str, token: str = None) -> dict[str, int]:
+    """{bonus: nombre de fois deja lance par CE manager} sur les journees
+    deja jouees de la saison -- retour utilisateur 2026-08-29, "les
+    resumes des matchs gardent en memoire les bonus utilises, ne proposer
+    un bonus a utiliser que s'il reste encore disponible". CORRIGE
+    2026-08-29 (meme jour) : un premier correctif comptait juste "deja
+    utilise au moins une fois = plus jamais propose", FAUX pour plusieurs
+    coups qui ont un quota > 1 (ex. McDo+ = 2 en poule de 6, pas 1 --
+    "j'en ai utilise 1 mais on en a 2 de base" -- cf. core.live_scoring.
+    BONUS_QUANTITY_BY_DIVISION_SIZE, tableau officiel fourni par
+    l'utilisateur). Compte donc chaque occurrence, pas juste la presence.
+    Aucun stockage Supabase dedie a cet usage -- core.archive_capture ne
+    suit que les bonus SUBIS (direction inverse, pour la Pinata), pas les
+    bonus LANCES par le manager lui-meme -- reconstruit ici en scannant
+    match[cote]["bonuses"] (cf. get_division_matches) de chaque journee
+    deja resolue (calendar fixture avec afterTargetMan, cf.
+    get_division_calendar -- absent tant que le vrai resultat n'est pas
+    confirme par MPG)."""
     calendar = get_division_calendar(short_id, season_number, division_number, token)
     played_game_weeks = sorted({f["gameWeek"] for f in calendar.get("fixtures", []) if f.get("afterTargetMan")})
-    used: set[str] = set()
+    counts: dict[str, int] = {}
     for game_week in played_game_weeks:
         matches = get_division_matches(short_id, season_number, division_number, game_week, token)
         for match in matches:
             for side in ("home", "away"):
                 team = match.get(side) or {}
                 if team.get("userId") == user_id:
-                    used.update((team.get("bonuses") or {}).keys())
-    return used
+                    for key in (team.get("bonuses") or {}).keys():
+                        counts[key] = counts.get(key, 0) + 1
+    return counts
 
 
 def get_division_teams(short_id: str, season_number: int, division_number: int, token: str = None) -> list[dict]:
