@@ -57,8 +57,29 @@
     background: linear-gradient(180deg, #2f8f4e 0%, #2a7d46 100%);
     border: 0.5px solid var(--mpg-border-soft); border-radius: var(--mpg-radius);
     padding: 1.1rem 1.2rem; margin: 0.75rem 0; display: flex; flex-direction: column; gap: 0.7rem;
+    position: relative; overflow: hidden;
   }
-  .pitch-line { display: flex; justify-content: center; gap: 0.6rem; flex-wrap: wrap; }
+  .pitch-line { display: flex; justify-content: center; gap: 0.6rem; flex-wrap: wrap; position: relative; z-index: 1; }
+
+  /* Lignes de terrain (demi-terrain, gardien en haut cote but) -- retour
+     utilisateur 2026-08-29, "trace les lignes du terrain (touches,
+     surface de reparation, 6 metres et demi rond central)". Decoratif,
+     approximatif par rapport aux chips (pas cense s'aligner au pixel). */
+  .pitch-markings { position: absolute; inset: 0.6rem; z-index: 0; pointer-events: none; }
+  .pitch-boundary { position: absolute; inset: 0; border: 0.1rem solid rgba(255,255,255,0.55); border-radius: 2px; }
+  .pitch-penalty-area {
+    position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: 64%; height: 30%; border: 0.1rem solid rgba(255,255,255,0.55); border-top: none;
+  }
+  .pitch-six-yard {
+    position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: 32%; height: 12%; border: 0.1rem solid rgba(255,255,255,0.55); border-top: none;
+  }
+  .pitch-center-circle {
+    position: absolute; bottom: -0.1rem; left: 50%; transform: translateX(-50%);
+    width: 36%; aspect-ratio: 2 / 1; border: 0.1rem solid rgba(255,255,255,0.55); border-bottom: none;
+    border-radius: 999px 999px 0 0;
+  }
 
   .pool-section { margin-top: 0.4rem; }
   .pool-line { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin: 0.4rem 0; }
@@ -271,10 +292,10 @@
     if (!state.starterIds.has(state.captainId)) state.captainId = pickCaptain(state);
   }
 
-  // Attaquants en haut (cote but adverse) -> gardien en bas, comme la
-  // vraie appli MPG -- ordre inverse du prototype MPG_Perso_L1 (qui
-  // affichait G en premier), choisi pour rester familier aux managers.
-  const PITCH_POSITION_ORDER = [4, 3, 2, 1];
+  // Gardien en haut (son but) -> attaquants en bas, comme un demi-terrain
+  // vu depuis les tribunes derriere le but -- retour utilisateur
+  // 2026-08-29, "Inverse les postes (gardien en haut, attaquants en bas)".
+  const PITCH_POSITION_ORDER = [1, 2, 3, 4];
 
   // Le hotlink MPG (jerseyUrl) 403 pour pas mal de clubs (Ligue 2 et
   // quelques autres) -- repli sur une copie locale (jerseyFallbackUrl,
@@ -349,7 +370,15 @@
         <button type="button" class="reset-btn">Réinitialiser</button>
       </div>
       ${warning}
-      <div class="pitch">${pitchHtml(state)}</div>
+      <div class="pitch">
+        <div class="pitch-markings">
+          <div class="pitch-boundary"></div>
+          <div class="pitch-penalty-area"></div>
+          <div class="pitch-six-yard"></div>
+          <div class="pitch-center-circle"></div>
+        </div>
+        ${pitchHtml(state)}
+      </div>
       <div class="pool-section">${poolHtml(state)}</div>`;
   }
 
