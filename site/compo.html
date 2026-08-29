@@ -117,6 +117,26 @@
 
   .status-msg { color: var(--mpg-text-soft); font-size: 0.9rem; margin: 1rem 0; }
   .status-msg.err { color: var(--mpg-danger); }
+
+  /* --- Bonus + remplacements tactiques (optionnels) -- retour utilisateur
+     2026-08-29, "Les remplacements tactiques / Les bonus (en fonction du
+     type de poules (2-4-6-8 ou 10)". Purement informatif : rien n'est
+     envoye a MPG, c'est a configurer soi-meme dans la vraie appli. */
+  .section-title {
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--mpg-text-soft); margin: 1rem 0 0.4rem;
+    border-top: 0.5px solid var(--mpg-border-soft); padding-top: 0.6rem;
+  }
+  .bonus-row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+  .bonus-row label, .tactical-sub-row label { font-size: 0.8rem; color: var(--mpg-text-soft); }
+  .bonus-row select, .tactical-sub-row select {
+    font-size: 0.82rem; padding: 0.25rem 0.5rem; border-radius: var(--mpg-radius);
+    border: 0.5px solid var(--mpg-border-soft); background: var(--mpg-surface, #fff); color: var(--mpg-title);
+  }
+  .tactical-sub-row {
+    display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; padding: 0.3rem 0; font-size: 0.85rem;
+  }
+  .tactical-sub-row .ts-name { font-weight: 700; min-width: 8rem; }
 </style>
 </head>
 <body>
@@ -230,15 +250,52 @@
   // possibilite de modifier la formation et les joueurs"). squad = TOUS
   // les joueurs possedes (y compris sans note, cf. core/lineup_
   // recommender.py::full_squad) -- rien n'est jamais cache.
-  function makeState(data) {
+  function makeState(data, divisionSize) {
     return {
       squad: data.squad,
       formations: data.formations,
+      divisionSize,
       recommended: { formation: data.formation, starterIds: (data.starters || []).map(p => p.playerId), captainId: data.captainId },
       formation: data.formation || Object.keys(data.formations)[0],
       starterIds: new Set((data.starters || []).map(p => p.playerId)),
       captainId: data.captainId || null,
+      bonus: "",
+      bonusTargetId: null,
+      // {starterId: {subId, threshold}} -- retour utilisateur 2026-08-29,
+      // "Les remplacements tactiques" -- max 5 (regle MPG officielle, cf.
+      // core/live_scoring.py docstring "jusqu'a 5"), jamais pour un gardien.
+      tacticalSubs: {},
     };
+  }
+
+  function isValidBonusTarget(state, playerId) {
+    if (!state.starterIds.has(playerId) || playerId === state.captainId) return false;
+    const p = state.squad.find(s => s.playerId === playerId);
+    return !!p && p.position !== 1;
+  }
+
+  // Recale bonus/remplacements tactiques apres tout changement de
+  // titulaires/formation -- une cible McDo+ ou un remplacant designe qui
+  // ne correspond plus (plus titulaire, plus au banc, mauvais poste) est
+  // simplement efface plutot que laisse dans un etat incoherent.
+  function pruneDependentState(state) {
+    if (state.bonusTargetId && !isValidBonusTarget(state, state.bonusTargetId)) {
+      state.bonusTargetId = null;
+    }
+    for (const starterId of Object.keys(state.tacticalSubs)) {
+      const starter = state.squad.find(p => p.playerId === starterId);
+      if (!starter || !state.starterIds.has(starterId) || starter.position === 1) {
+        delete state.tacticalSubs[starterId];
+        continue;
+      }
+      const assign = state.tacticalSubs[starterId];
+      if (assign.subId) {
+        const sub = state.squad.find(p => p.playerId === assign.subId);
+        if (!sub || state.starterIds.has(assign.subId) || sub.position !== starter.position) {
+          assign.subId = null;
+        }
+      }
+    }
   }
 
   function pickCaptain(state) {
@@ -266,6 +323,7 @@
       state.starterIds.add(playerId);
     }
     if (!state.starterIds.has(state.captainId)) state.captainId = pickCaptain(state);
+    pruneDependentState(state);
   }
 
   function applyFormation(state, formation) {
@@ -290,6 +348,7 @@
       }
     }
     if (!state.starterIds.has(state.captainId)) state.captainId = pickCaptain(state);
+    pruneDependentState(state);
   }
 
   // Gardien en haut (son but) -> attaquants en bas, comme un demi-terrain
@@ -358,6 +417,91 @@
     return rows || `<p class="meta" style="margin:0.5rem 0 0;">Tout l'effectif possédé est sur le terrain.</p>`;
   }
 
+  // Memes options/seuils que site/simulations.html (BONUS_OPTIONS/
+  // BONUS_MIN_DIVISION_SIZE) -- pas de module JS partage sur ce site,
+  // duplique volontairement pour rester coherent avec le reste de l'app.
+  // Retour utilisateur 2026-08-29, "Les bonus (en fonction du type de
+  // poules (2-4-6-8 ou 10)".
+  const BONUS_OPTIONS = [
+    { value: "", label: "Aucun" },
+    { value: "boostAllPlayers", label: "Zahia (+0,5 à tous)" },
+    { value: "boostOnePlayer", label: "McDo+ (+1 à un titu)" },
+    { value: "nerfGoalkeeper", label: "Suarez (-1 gardien)" },
+    { value: "nerfAllPlayers", label: "Cheat Code (-0,5 adverses)" },
+    { value: "blockTacticalSubs", label: "Tonton Pat' (bloque tactiques adv.)" },
+    { value: "removeGoal", label: "Valise à Nanard (annule 1 but adv.)" },
+    { value: "mirror", label: "Miroir (renvoie/vole le coup adv.)" },
+  ];
+  const BONUS_MIN_DIVISION_SIZE = {
+    removeGoal: 4, boostOnePlayer: 4,
+    nerfGoalkeeper: 6, boostAllPlayers: 6, mirror: 6,
+    nerfAllPlayers: 8, blockTacticalSubs: 8,
+  };
+  const BONUS_NEEDS_TARGET = new Set(["boostOnePlayer"]);
+
+  function bonusOptionsForDivisionSize(divisionSize) {
+    return BONUS_OPTIONS.filter(o => !o.value || (divisionSize || 0) >= (BONUS_MIN_DIVISION_SIZE[o.value] || 0));
+  }
+
+  function bonusSectionHtml(state) {
+    const options = bonusOptionsForDivisionSize(state.divisionSize);
+    const optionsHtml = options.map(o => `<option value="${o.value}"${o.value === state.bonus ? " selected" : ""}>${o.label}</option>`).join("");
+    let targetHtml = "";
+    if (BONUS_NEEDS_TARGET.has(state.bonus)) {
+      const candidates = [...state.starterIds]
+        .map(id => state.squad.find(p => p.playerId === id))
+        .filter(p => p && isValidBonusTarget(state, p.playerId));
+      const opts = candidates.map(p => `<option value="${p.playerId}"${p.playerId === state.bonusTargetId ? " selected" : ""}>${p.name}</option>`).join("");
+      targetHtml = `<label>Cible <select class="bonus-target-select"><option value="">—</option>${opts}</select></label>`;
+    }
+    return `
+      <div class="section-title">Bonus (optionnel)</div>
+      <div class="bonus-row">
+        <label>Coup <select class="bonus-select">${optionsHtml}</select></label>
+        ${targetHtml}
+      </div>`;
+  }
+
+  const TACTICAL_SUB_MAX = 5;
+  const RATING_THRESHOLDS = Array.from({ length: 21 }, (_, i) => i / 2);
+
+  function tacticalSubRowHtml(state, starter) {
+    const assign = state.tacticalSubs[starter.playerId] || { subId: null, threshold: 5 };
+    const usedSubs = new Set(Object.values(state.tacticalSubs).map(a => a.subId).filter(Boolean));
+    const eligibleSubs = state.squad.filter(p =>
+      p.position === starter.position && !state.starterIds.has(p.playerId) &&
+      (!usedSubs.has(p.playerId) || p.playerId === assign.subId)
+    );
+    const usedCount = Object.values(state.tacticalSubs).filter(a => a.subId).length;
+    const capReached = usedCount >= TACTICAL_SUB_MAX && !assign.subId;
+    const subOptions = ['<option value="">Aucun</option>'].concat(
+      eligibleSubs.map(p => `<option value="${p.playerId}"${p.playerId === assign.subId ? " selected" : ""}>${p.name}</option>`)
+    ).join("");
+    const thresholdOptions = RATING_THRESHOLDS.map(v => `<option value="${v}"${v === assign.threshold ? " selected" : ""}>${fmt(v)}</option>`).join("");
+    return `
+      <div class="tactical-sub-row">
+        <span class="ts-name">${starter.name}</span>
+        <select class="ts-sub-select" data-starter-id="${starter.playerId}"${capReached ? ' disabled title="Maximum 5 remplacements tactiques atteint"' : ""}>${subOptions}</select>
+        <span class="meta">si note &lt;</span>
+        <select class="ts-threshold-select" data-starter-id="${starter.playerId}"${assign.subId ? "" : " disabled"}>${thresholdOptions}</select>
+      </div>`;
+  }
+
+  function tacticalSubsSectionHtml(state) {
+    const fieldStarters = [...state.starterIds]
+      .map(id => state.squad.find(p => p.playerId === id))
+      .filter(p => p && p.position !== 1)
+      .sort((a, b) => a.position - b.position);
+    if (!fieldStarters.length) return "";
+    const used = Object.values(state.tacticalSubs).filter(a => a.subId).length;
+    const rows = fieldStarters.map(p => tacticalSubRowHtml(state, p)).join("");
+    return `
+      <div class="section-title">Remplacements tactiques (optionnel, ${used}/${TACTICAL_SUB_MAX})</div>
+      <p class="meta" style="margin:0 0 0.4rem;">Si la note finale du titulaire est en-dessous du seuil (ou s'il n'a pas joué),
+      le remplaçant désigné entre à sa place avec sa propre note -- seulement s'il a lui-même joué.</p>
+      ${rows}`;
+  }
+
   function stateHtml(state) {
     const formationOptions = Object.keys(state.formations).sort()
       .map(f => `<option value="${f}"${f === state.formation ? " selected" : ""}>${f}</option>`).join("");
@@ -379,7 +523,9 @@
         </div>
         ${pitchHtml(state)}
       </div>
-      <div class="pool-section">${poolHtml(state)}</div>`;
+      <div class="pool-section">${poolHtml(state)}</div>
+      ${bonusSectionHtml(state)}
+      ${tacticalSubsSectionHtml(state)}`;
   }
 
   function renderState(root, state) {
@@ -396,12 +542,16 @@
       state.formation = state.recommended.formation || Object.keys(state.formations)[0];
       state.starterIds = new Set(state.recommended.starterIds);
       state.captainId = state.recommended.captainId;
+      state.bonus = "";
+      state.bonusTargetId = null;
+      state.tacticalSubs = {};
       renderState(root, state);
     });
     bodyEl.querySelectorAll(".chip-cap").forEach(btn => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         state.captainId = btn.dataset.captainFor;
+        pruneDependentState(state);
         renderState(root, state);
       });
     });
@@ -409,6 +559,38 @@
       chip.addEventListener("click", () => {
         toggleStarter(state, chip.dataset.playerId);
         renderState(root, state);
+      });
+    });
+
+    const bonusSelect = bodyEl.querySelector(".bonus-select");
+    if (bonusSelect) {
+      bonusSelect.addEventListener("change", (e) => {
+        state.bonus = e.target.value;
+        if (!BONUS_NEEDS_TARGET.has(state.bonus)) state.bonusTargetId = null;
+        renderState(root, state);
+      });
+    }
+    const targetSelect = bodyEl.querySelector(".bonus-target-select");
+    if (targetSelect) {
+      targetSelect.addEventListener("change", (e) => {
+        state.bonusTargetId = e.target.value || null;
+      });
+    }
+    bodyEl.querySelectorAll(".ts-sub-select").forEach(sel => {
+      sel.addEventListener("change", () => {
+        const starterId = sel.dataset.starterId;
+        if (sel.value) {
+          state.tacticalSubs[starterId] = { subId: sel.value, threshold: (state.tacticalSubs[starterId] || {}).threshold ?? 5 };
+        } else {
+          delete state.tacticalSubs[starterId];
+        }
+        renderState(root, state);
+      });
+    });
+    bodyEl.querySelectorAll(".ts-threshold-select").forEach(sel => {
+      sel.addEventListener("change", () => {
+        const assign = state.tacticalSubs[sel.dataset.starterId];
+        if (assign) assign.threshold = parseFloat(sel.value);
       });
     });
   }
@@ -425,7 +607,7 @@
       const res = await fetch(url);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || res.statusText);
-      renderState(root, makeState(data));
+      renderState(root, makeState(data, ctx.divisionSize));
     } catch (e) {
       formationEl.textContent = "indisponible";
       bodyEl.innerHTML = `<p class="status-msg err">Recommandation indisponible (${e.message}).</p>`;
@@ -497,7 +679,10 @@
     const blocks = listEl.querySelectorAll(".compo-expander");
     myRows.forEach((row, i) => {
       const league = leaguesByCode[row.league_code];
-      const ctx = { leagueCode: row.league_code, season: league.season_search, division: row.division, userId };
+      const ctx = {
+        leagueCode: row.league_code, season: league.season_search, division: row.division, userId,
+        divisionSize: (row.data || []).length,
+      };
       loadRecommendation(blocks[i], ctx);
     });
   }
