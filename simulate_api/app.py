@@ -73,23 +73,37 @@ _supabase = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 # Maillots reels MPG, hebergees publiquement par MPG lui-meme -- retour
 # utilisateur 2026-08-29, "meme pas l'esthetique avec le demi terrain de
 # football et les maillots" (vu dans un projet soeur, MPG_Perso_L1, qui
-# stocke sa PROPRE copie base64 des maillots) : inutile de dupliquer un
-# asset local ici, l'URL MPG est directement hotlinkable (verifie :
-# s3.eu-west-1.amazonaws.com/image.mpg/jersey/{saison}/{championshipId}/
-# {clubId numerique}.png repond 200 sans auth). La "saison" ici est
-# l'annee calendaire reelle (stats.nextMatch.season du pool, ex. 2026),
-# PAS le numero de saison interne a la division (ex. 22) utilise ailleurs
-# dans ce fichier -- deux systemes de numerotation distincts chez MPG.
+# stocke sa PROPRE copie base64 des maillots) : l'URL MPG est directement
+# hotlinkable (verifie : s3.eu-west-1.amazonaws.com/image.mpg/jersey/
+# {saison}/{championshipId}/{clubId numerique}.png repond 200 sans auth).
+# La "saison" ici est l'annee calendaire reelle (stats.nextMatch.season du
+# pool, ex. 2026), PAS le numero de saison interne a la division (ex. 22)
+# utilise ailleurs dans ce fichier -- deux systemes de numerotation
+# distincts chez MPG.
+#
+# MAIS cette URL renvoie 403 (pas 404) pour les clubs sans maillot boutique
+# MPG -- verifie : essentiellement toute la Ligue 2 (Troyes, Auxerre,
+# Saint-Etienne, Metz, Guingamp, Nantes, Reims, Rodez, Nancy...) et
+# quelques autres divisions secondaires. Ces memes maillots existent deja
+# LOCALEMENT (C:\Users\sebas\Desktop\Python\Clubs\Jerseys, mis a jour par
+# mpg_app/update_jerseys.py depuis /locker-room/extended -- la boutique
+# MPG elle-meme) : copies une bonne fois dans site/assets/jerseys/
+# {clubId numerique}.png (renommes par id plutot que nom, pour eviter tout
+# probleme d'accents/espaces dans l'URL), servies par GitHub Pages comme
+# repli cote frontend (onerror sur le <img>, cf. compo.html) si le hotlink
+# MPG echoue. Snapshot fige a la copie -- un futur club promu/jamais vu
+# n'aura ni l'un ni l'autre, le <img> disparait alors silencieusement.
 JERSEY_BASE_URL = "https://s3.eu-west-1.amazonaws.com/image.mpg/jersey"
+JERSEY_FALLBACK_BASE_URL = "https://mpgsep1980.github.io/mpg_live/assets/jerseys"
 
 
-def jersey_url_for(pool_entry: dict, champ_id: int) -> str | None:
+def jersey_urls_for(pool_entry: dict, champ_id: int) -> tuple[str | None, str | None]:
     club_id = pool_entry.get("clubId") or ""
     club_num = club_id.rsplit("_", 1)[-1] if club_id else None
     season = ((pool_entry.get("stats") or {}).get("nextMatch") or {}).get("season")
-    if not club_num or not season:
-        return None
-    return f"{JERSEY_BASE_URL}/{season}/{champ_id}/{club_num}.png"
+    primary = f"{JERSEY_BASE_URL}/{season}/{champ_id}/{club_num}.png" if club_num and season else None
+    fallback = f"{JERSEY_FALLBACK_BASE_URL}/{club_num}.png" if club_num else None
+    return primary, fallback
 
 
 @app.after_request
@@ -552,8 +566,8 @@ def recommend_lineup_route():
     def resolve(entry):
         p = pool.get(entry["playerId"], {})
         name = f"{p.get('firstName', '')} {p.get('lastName', '')}".strip()
-        jersey_url = jersey_url_for(p, champ_id)
-        return {**entry, "name": name, "jerseyUrl": jersey_url}
+        jersey_url, jersey_fallback_url = jersey_urls_for(p, champ_id)
+        return {**entry, "name": name, "jerseyUrl": jersey_url, "jerseyFallbackUrl": jersey_fallback_url}
 
     rec = recommend_lineup(squad_ids, pool)
     squad = [resolve(p) for p in full_squad(squad_ids, pool)]

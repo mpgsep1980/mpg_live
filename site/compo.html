@@ -276,6 +276,19 @@
   // affichait G en premier), choisi pour rester familier aux managers.
   const PITCH_POSITION_ORDER = [4, 3, 2, 1];
 
+  // Le hotlink MPG (jerseyUrl) 403 pour pas mal de clubs (Ligue 2 et
+  // quelques autres) -- repli sur une copie locale (jerseyFallbackUrl,
+  // servie par GitHub Pages, cf. simulate_api/app.py) avant d'abandonner
+  // silencieusement (retour utilisateur 2026-08-29, pointant vers
+  // Desktop/Python/Clubs/Jerseys comme source deja disponible).
+  function jerseyImgHtml(p) {
+    if (!p.jerseyUrl && !p.jerseyFallbackUrl) return "";
+    const src = p.jerseyUrl || p.jerseyFallbackUrl;
+    const fallback = p.jerseyUrl ? (p.jerseyFallbackUrl || "") : "";
+    return `<img class="chip-jersey" src="${src}" data-fallback="${fallback}" alt=""
+      onerror="if (this.dataset.fallback) { this.src = this.dataset.fallback; this.dataset.fallback = ''; } else { this.remove(); }">`;
+  }
+
   function chipHtml(p, isStarter, isCaptain) {
     const capBtn = isStarter
       ? `<span class="chip-cap${isCaptain ? " is-captain" : ""}" data-captain-for="${p.playerId}" title="Capitaine">${isCaptain ? "★" : "☆"}</span>`
@@ -283,7 +296,7 @@
     const flag = p.likelyUnavailable
       ? `<span class="chip-flag" title="N'a joué aucune minute lors de son dernier match -- pas forcément blessé, vérifie avant de le titulariser.">⚑</span>`
       : "";
-    const jersey = p.jerseyUrl ? `<img class="chip-jersey" src="${p.jerseyUrl}" alt="" onerror="this.remove()">` : "";
+    const jersey = jerseyImgHtml(p);
     return `
       <div class="chip${isStarter ? "" : " bench-chip"}" data-player-id="${p.playerId}">
         ${capBtn}${flag}${jersey}
